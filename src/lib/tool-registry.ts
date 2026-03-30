@@ -8,7 +8,6 @@ import {
 	rotateImage,
 	cropImage,
 	upscaleImage,
-	imageToSvg,
 	blurImage,
 	pixelateImage,
 	addImageWatermark,
@@ -38,8 +37,6 @@ import {
 	extractAudio,
 	convertAudio,
 	trimAudio,
-	videoToGif,
-	gifToMp4,
 	mergeVideos,
 	mergeAudio,
 	mergeAudioVideo,
@@ -58,7 +55,6 @@ export type ToolCategory =
 	| "image"
 	| "video"
 	| "audio"
-	| "gif"
 	| "file"
 	| "document"
 	| "data"
@@ -72,6 +68,7 @@ export interface ToolOption {
 	min?: number
 	max?: number
 	accept?: string
+	isVisible?: (options: Record<string, unknown>) => boolean
 }
 
 export interface ToolDefinition {
@@ -116,7 +113,6 @@ const tools: ToolDefinition[] = [
 			".webp",
 			".avif",
 			".bmp",
-			".gif",
 			".svg",
 		],
 		multiple: true,
@@ -131,7 +127,7 @@ const tools: ToolDefinition[] = [
 					{ label: "WebP", value: "image/webp" },
 					{ label: "AVIF", value: "image/avif" },
 					{ label: "BMP", value: "image/bmp" },
-					{ label: "GIF", value: "image/gif" },
+					{ label: "SVG", value: "image/svg+xml" },
 				],
 				default: "image/png",
 			},
@@ -142,33 +138,25 @@ const tools: ToolDefinition[] = [
 				default: 85,
 				min: 10,
 				max: 100,
+				isVisible: (opts) => opts.format !== "image/svg+xml",
 			},
-		],
-		process: async (files, opts) =>
-			batch(files, (f) =>
-				convertImage(f, String(opts.format), Number(opts.quality)),
-			),
-	},
-	{
-		id: "image-to-svg",
-		name: "Image to SVG",
-		description:
-			"Convert a raster image (PNG/JPG) into a Scalable Vector Graphic (SVG) using ImageTracer.js",
-		category: "image",
-		icon: "🖌️",
-		acceptedExtensions: [".png", ".jpg", ".jpeg", ".webp", ".bmp"],
-		multiple: true,
-		options: [
 			{
 				id: "numberofcolors",
 				label: "Number of Colors",
 				type: "number",
-				default: 50,
+				default: 40,
 				min: 2,
 				max: 256,
+				isVisible: (opts) => opts.format === "image/svg+xml",
 			},
 		],
-		process: async (files, opts) => batch(files, (f) => imageToSvg(f, opts)),
+		process: async (files, opts) =>
+			batch(files, (f) =>
+				convertImage(f, String(opts.format), {
+					quality: Number(opts.quality),
+					numberofcolors: Number(opts.numberofcolors),
+				}),
+			),
 	},
 	{
 		id: "image-resize",
@@ -460,7 +448,7 @@ const tools: ToolDefinition[] = [
 	{
 		id: "video-convert",
 		name: "Convert Video",
-		description: "Convert between MP4, WebM, MKV, and AVI",
+		description: "Convert between MP4, WebM, MKV, AVI, GIF",
 		category: "video",
 		icon: "🎬",
 		acceptedExtensions: [
@@ -471,6 +459,7 @@ const tools: ToolDefinition[] = [
 			".mov",
 			".flv",
 			".3gp",
+			".gif",
 		],
 		multiple: false,
 		options: [
@@ -483,6 +472,8 @@ const tools: ToolDefinition[] = [
 					{ label: "WebM", value: "webm" },
 					{ label: "MKV", value: "mkv" },
 					{ label: "AVI", value: "avi" },
+					{ label: "GIF", value: "gif" },
+					{ label: "WebP", value: "webp" },
 				],
 				default: "mp4",
 			},
@@ -765,50 +756,6 @@ const tools: ToolDefinition[] = [
 		multiple: true,
 		options: [],
 		process: async (files) => [await mergeAudio(files)],
-	},
-
-	// ── GIF ──
-	{
-		id: "gif-from-video",
-		name: "Video to GIF",
-		description: "Create a GIF from a video file",
-		category: "gif",
-		icon: "🎞️",
-		acceptedExtensions: [
-			".mp4",
-			".webm",
-			".mkv",
-			".avi",
-			".mov",
-			".flv",
-			".3gp",
-		],
-		multiple: false,
-		options: [
-			{ id: "fps", label: "FPS", type: "number", default: 10, min: 1, max: 30 },
-			{
-				id: "width",
-				label: "Width (px)",
-				type: "number",
-				default: 320,
-				min: 50,
-				max: 1920,
-			},
-		],
-		process: async (files, opts) => [
-			await videoToGif(files[0], Number(opts.fps), Number(opts.width)),
-		],
-	},
-	{
-		id: "gif-to-mp4",
-		name: "GIF to MP4",
-		description: "Convert a GIF to MP4 video",
-		category: "gif",
-		icon: "🎥",
-		acceptedExtensions: [".gif"],
-		multiple: false,
-		options: [],
-		process: async (files) => [await gifToMp4(files[0])],
 	},
 
 	// ── PDF to PPTX ──
@@ -1284,7 +1231,6 @@ export const getCategories = (): {
 	{ id: "image", label: "Image Tools", icon: "🖼️" },
 	{ id: "video", label: "Video Tools", icon: "🎬" },
 	{ id: "audio", label: "Audio Tools", icon: "🎵" },
-	{ id: "gif", label: "GIF Tools", icon: "🎞️" },
 	{ id: "document", label: "Document Tools", icon: "📑" },
 	{ id: "file", label: "File Utilities", icon: "📦" },
 	{ id: "data", label: "Data Tools", icon: "📊" },

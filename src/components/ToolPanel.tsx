@@ -1036,82 +1036,91 @@ export default function ToolPanel({ tool }: ToolPanelProps) {
 							Options
 						</h4>
 						<div className="grid gap-4 sm:grid-cols-2">
-							{tool.options.map((opt) => (
-								<div key={opt.id} className="form-control">
-									<label className="label" htmlFor={`opt-${opt.id}`}>
-										<span className="label-text text-sm">{opt.label}</span>
-									</label>
-									{opt.type === "select" && opt.options ? (
-										<select
-											id={`opt-${opt.id}`}
-											className="select select-bordered select-sm"
-											value={String(options[opt.id] ?? opt.default)}
-											onChange={(e) =>
-												setOptions((p) => ({ ...p, [opt.id]: e.target.value }))
-											}
-										>
-											{opt.options.map((o) => (
-												<option key={o.value} value={o.value}>
-													{o.label}
-												</option>
-											))}
-										</select>
-									) : opt.type === "number" ? (
-										<input
-											id={`opt-${opt.id}`}
-											type="number"
-											className="input input-bordered input-sm"
-											value={Number(options[opt.id] ?? opt.default)}
-											min={opt.min}
-											max={opt.max}
-											onChange={(e) =>
-												setOptions((p) => ({
-													...p,
-													[opt.id]: Number(e.target.value),
-												}))
-											}
-										/>
-									) : opt.type === "text" ? (
-										<input
-											id={`opt-${opt.id}`}
-											type="text"
-											className="input input-bordered input-sm"
-											value={String(options[opt.id] ?? opt.default)}
-											onChange={(e) =>
-												setOptions((p) => ({ ...p, [opt.id]: e.target.value }))
-											}
-										/>
-									) : opt.type === "file" ? (
-										<input
-											id={`opt-${opt.id}`}
-											type="file"
-											accept={opt.accept}
-											className="file-input file-input-bordered file-input-sm"
-											onChange={(e) => {
-												if (e.target.files?.[0]) {
+							{tool.options.map((opt) => {
+								if (opt.isVisible && !opt.isVisible(options)) return null
+								return (
+									<div key={opt.id} className="form-control">
+										<label className="label" htmlFor={`opt-${opt.id}`}>
+											<span className="label-text text-sm">{opt.label}</span>
+										</label>
+										{opt.type === "select" && opt.options ? (
+											<select
+												id={`opt-${opt.id}`}
+												className="select select-bordered select-sm"
+												value={String(options[opt.id] ?? opt.default)}
+												onChange={(e) =>
 													setOptions((p) => ({
 														...p,
-														[opt.id]: e.target.files?.[0],
+														[opt.id]: e.target.value,
 													}))
 												}
-											}}
-										/>
-									) : (
-										<input
-											id={`opt-${opt.id}`}
-											type="checkbox"
-											className="toggle toggle-primary"
-											checked={Boolean(options[opt.id] ?? opt.default)}
-											onChange={(e) =>
-												setOptions((p) => ({
-													...p,
-													[opt.id]: e.target.checked,
-												}))
-											}
-										/>
-									)}
-								</div>
-							))}
+											>
+												{opt.options.map((o) => (
+													<option key={o.value} value={o.value}>
+														{o.label}
+													</option>
+												))}
+											</select>
+										) : opt.type === "number" ? (
+											<input
+												id={`opt-${opt.id}`}
+												type="number"
+												className="input input-bordered input-sm"
+												value={Number(options[opt.id] ?? opt.default)}
+												min={opt.min}
+												max={opt.max}
+												onChange={(e) =>
+													setOptions((p) => ({
+														...p,
+														[opt.id]: Number(e.target.value),
+													}))
+												}
+											/>
+										) : opt.type === "text" ? (
+											<input
+												id={`opt-${opt.id}`}
+												type="text"
+												className="input input-bordered input-sm"
+												value={String(options[opt.id] ?? opt.default)}
+												onChange={(e) =>
+													setOptions((p) => ({
+														...p,
+														[opt.id]: e.target.value,
+													}))
+												}
+											/>
+										) : opt.type === "file" ? (
+											<input
+												id={`opt-${opt.id}`}
+												type="file"
+												accept={opt.accept}
+												className="file-input file-input-bordered file-input-sm"
+												onChange={(e) => {
+													if (e.target.files?.[0]) {
+														setOptions((p) => ({
+															...p,
+															[opt.id]: e.target.files?.[0],
+														}))
+													}
+												}}
+											/>
+										) : (
+											<input
+												id={`opt-${opt.id}`}
+												type="checkbox"
+												className="checkbox checkbox-primary checkbox-sm"
+												checked={Boolean(options[opt.id] ?? opt.default)}
+												onChange={(e) =>
+													setOptions((p) => ({
+														...p,
+														[opt.id]: e.target.checked,
+													}))
+												}
+											/>
+										)}
+									</div>
+								)
+							})}
 						</div>
 					</div>
 				</div>

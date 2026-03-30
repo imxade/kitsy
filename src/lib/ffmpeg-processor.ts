@@ -14,6 +14,7 @@ async function getFFmpeg(): Promise<FFmpeg> {
 
 	if (!loadPromise) {
 		ffmpeg = new FFmpeg()
+		ffmpeg.on("log", ({ message }) => console.log("[ffmpeg]", message))
 		loadPromise = (async () => {
 			await ffmpeg?.load({
 				coreURL: await toBlobURL("/ffmpeg/ffmpeg-core.js", "text/javascript"),
@@ -66,6 +67,21 @@ export async function convertVideo(
 		args.push("-c", "copy")
 	} else if (outputFormat === "avi") {
 		args.push("-c:v", "mjpeg", "-q:v", "2", "-c:a", "libmp3lame")
+	} else if (outputFormat === "gif") {
+		args.push("-vf", "fps=10,scale=480:-1:flags=lanczos", "-f", "gif")
+	} else if (outputFormat === "webp") {
+		args.push("-vcodec", "libwebp", "-loop", "0", "-pix_fmt", "yuva420p")
+	} else if (outputFormat === "mp4") {
+		args.push(
+			"-c:v",
+			"libx264",
+			"-pix_fmt",
+			"yuv420p",
+			"-movflags",
+			"faststart",
+			"-vf",
+			"scale=trunc(iw/2)*2:trunc(ih/2)*2",
+		)
 	}
 	args.push(outputName)
 
@@ -75,7 +91,13 @@ export async function convertVideo(
 	await ff.deleteFile(inputName)
 	await ff.deleteFile(outputName)
 
-	const blob = new Blob([data], { type: `video/${outputFormat}` })
+	const mimeType =
+		outputFormat === "gif" || outputFormat === "webp"
+			? `image/${outputFormat}`
+			: outputFormat === "mkv"
+				? "video/x-matroska"
+				: `video/${outputFormat}`
+	const blob = new Blob([data], { type: mimeType })
 	const baseName = file.name.replace(/\.[^.]+$/, "")
 	return { blob, name: `${baseName}.${outputFormat}` }
 }
@@ -204,70 +226,6 @@ export async function trimAudio(
 	return {
 		blob: new Blob([data], { type: file.type || "audio/mpeg" }),
 		name: `${baseName}-trimmed${ext}`,
-	}
-}
-
-// ── GIF ──
-
-export async function videoToGif(
-	file: File,
-	fps: number,
-	width: number,
-): Promise<ProcessedFile> {
-	const ff = await getFFmpeg()
-	const inputName = `input${getExtFromFile(file)}`
-	const outputName = "output.gif"
-
-	await ff.writeFile(inputName, await fetchFile(file))
-	await ff.exec([
-		"-i",
-		inputName,
-		"-vf",
-		`fps=${fps},scale=${width}:-1:flags=lanczos`,
-		"-f",
-		"gif",
-		outputName,
-	])
-	const data = toBytes((await ff.readFile(outputName)) as Uint8Array)
-
-	await ff.deleteFile(inputName)
-	await ff.deleteFile(outputName)
-
-	const baseName = file.name.replace(/\.[^.]+$/, "")
-	return {
-		blob: new Blob([data], { type: "image/gif" }),
-		name: `${baseName}.gif`,
-	}
-}
-
-// ── GIF to Video ──
-
-export async function gifToMp4(file: File): Promise<ProcessedFile> {
-	const ff = await getFFmpeg()
-	const inputName = "input.gif"
-	const outputName = "output.mp4"
-
-	await ff.writeFile(inputName, await fetchFile(file))
-	await ff.exec([
-		"-i",
-		inputName,
-		"-movflags",
-		"faststart",
-		"-pix_fmt",
-		"yuv420p",
-		"-vf",
-		"scale=trunc(iw/2)*2:trunc(ih/2)*2",
-		outputName,
-	])
-	const data = toBytes((await ff.readFile(outputName)) as Uint8Array)
-
-	await ff.deleteFile(inputName)
-	await ff.deleteFile(outputName)
-
-	const baseName = file.name.replace(/\.[^.]+$/, "")
-	return {
-		blob: new Blob([data], { type: "video/mp4" }),
-		name: `${baseName}.mp4`,
 	}
 }
 

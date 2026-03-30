@@ -5,8 +5,6 @@ import {
 	extractAudio,
 	convertAudio,
 	trimAudio,
-	videoToGif,
-	gifToMp4,
 	mergeVideos,
 	mergeAudio,
 	mergeAudioVideo,
@@ -48,10 +46,6 @@ describe("ffmpeg-processor", () => {
 		expect(typeof fadeAudio).toBe("function")
 	})
 
-	it("exports GIF functions", () => {
-		expect(typeof videoToGif).toBe("function")
-		expect(typeof gifToMp4).toBe("function")
-	})
 
 	it("exports prefetchFFmpeg utility", () => {
 		expect(typeof prefetchFFmpeg).toBe("function")

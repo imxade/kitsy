@@ -49,7 +49,6 @@ describe("tool-registry", () => {
 		expect(ids).toContain("image")
 		expect(ids).toContain("video")
 		expect(ids).toContain("audio")
-		expect(ids).toContain("gif")
 		expect(ids).toContain("file")
 	})
 
