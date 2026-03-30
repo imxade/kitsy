@@ -435,7 +435,7 @@ const tools: ToolDefinition[] = [
 	{
 		id: "video-convert",
 		name: "Convert Video",
-		description: "Convert between MP4, WebM, MKV, AVI, GIF, and WebP",
+		description: "Convert between MP4, WebM, MKV, AVI, GIF",
 		category: "video",
 		icon: "🎬",
 		acceptedExtensions: [
@@ -447,7 +447,6 @@ const tools: ToolDefinition[] = [
 			".flv",
 			".3gp",
 			".gif",
-			".webp",
 		],
 		multiple: false,
 		options: [
