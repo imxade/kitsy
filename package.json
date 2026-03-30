@@ -1,0 +1,80 @@
+{
+  "name": "Hanee",
+  "private": true,
+  "type": "module",
+  "license": "Apache-2.0",
+  "imports": {
+    "#/*": "./src/*"
+  },
+  "scripts": {
+    "dev": "dotenv -e .env.local -- sh -c \"NODE_OPTIONS='--import ./instrument.server.mjs' vite dev --port 3000\"",
+    "build": "vite build && (test -d .output/server && cp instrument.server.mjs .output/server || true)",
+    "preview": "vite preview",
+    "test": "vitest run",
+    "start": "node --import ./.output/server/instrument.server.mjs .output/server/index.mjs",
+    "format": "biome check --write .",
+    "lint": "biome lint",
+    "check": "biome check",
+    "postinstall": "mkdir -p public/ffmpeg && cp node_modules/@ffmpeg/core/dist/esm/ffmpeg-core.* public/ffmpeg/ || true"
+  },
+  "dependencies": {
+    "@ffmpeg/core": "^0.12.10",
+    "@ffmpeg/ffmpeg": "^0.12.15",
+    "@ffmpeg/util": "^0.12.2",
+    "@sentry/tanstackstart-react": "^10.42.0",
+    "@serwist/vite": "^9.5.7",
+    "@t3-oss/env-core": "^0.13.10",
+    "@tailwindcss/vite": "^4.1.18",
+    "@tanstack/react-devtools": "^0.10.0",
+    "@tanstack/react-router": "^1.168.7",
+    "@tanstack/react-router-devtools": "^1.166.11",
+    "@tanstack/react-start": "^1.167.12",
+    "@tanstack/router-plugin": "^1.167.8",
+    "daisyui": "^5.5.19",
+    "docx-preview": "^0.3.7",
+    "dotenv-cli": "^11.0.0",
+    "fflate": "^0.8.2",
+    "imagetracerjs": "^1.2.6",
+    "konva": "^10.2.3",
+    "lucide-react": "^1.7.0",
+    "mammoth": "^1.12.0",
+    "nitro": "npm:nitro-nightly@latest",
+    "pdf-lib": "^1.17.1",
+    "pdfjs-dist": "^5.5.207",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
+    "react-konva": "^19.2.3",
+    "serwist": "^9.5.7",
+    "tailwindcss": "^4.1.18",
+    "xlsx": "^0.18.5",
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.2.4",
+    "@tailwindcss/typography": "^0.5.16",
+    "@tanstack/devtools-vite": "^0.6.0",
+    "@testing-library/dom": "^10.4.1",
+    "@testing-library/react": "^16.3.0",
+    "@types/node": "^22.10.2",
+    "@types/react": "^19.2.0",
+    "@types/react-dom": "^19.2.0",
+    "@vitejs/plugin-react": "^5.1.4",
+    "jsdom": "^29.0.1",
+    "typescript": "^6.0.2",
+    "vite": "^8.0.3",
+    "vite-tsconfig-paths": "^6.1.1",
+    "vitest": "^4.1.2"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "esbuild",
+      "lightningcss"
+    ],
+    "overrides": {
+      "h3-v2": "npm:h3@^2.0.1-rc.20"
+    }
+  },
+  "overrides": {
+    "h3-v2": "npm:h3@^2.0.1-rc.20"
+  }
+}
