@@ -87,28 +87,6 @@ export async function resizeImage(
 	return { blob, name }
 }
 
-export async function compressImage(
-	file: File,
-	quality: number,
-): Promise<ProcessedFile> {
-	const { img, width, height, close } = await loadDrawable(file)
-	const canvas = new OffscreenCanvas(width, height)
-	const ctx = canvas.getContext("2d")
-	if (!ctx) throw new Error("Could not get 2D context")
-	ctx.drawImage(img, 0, 0)
-	close()
-
-	// JPEG/WebP support quality with lossy compression; PNG is lossless
-	const mime = file.type === "image/png" ? "image/webp" : file.type
-	const blob = await canvas.convertToBlob({
-		type: mime,
-		quality: quality / 100,
-	})
-	const ext = mimeToExt(mime)
-	const name = `${file.name.replace(/\.[^.]+$/, "")}-compressed${ext}`
-	return { blob, name }
-}
-
 export async function rotateImage(
 	file: File,
 	angle: number,
@@ -188,29 +166,167 @@ export async function upscaleImage(
 	return { blob, name: `${baseName}-${scale}x${mimeToExt(mime)}` }
 }
 
+export async function blurImage(
+	file: File,
+	radius: number,
+	region?: { x: number; y: number; width: number; height: number },
+): Promise<ProcessedFile> {
+	const { img, width, height, close } = await loadDrawable(file)
+	const canvas = new OffscreenCanvas(width, height)
+	const ctx = canvas.getContext("2d")
+	if (!ctx) throw new Error("Could not get 2D context")
+
+	// 1. Draw original image
+	ctx.drawImage(img, 0, 0)
+
+	if (region && region.width > 0 && region.height > 0) {
+		// 2. Process only the region
+		const regionCanvas = new OffscreenCanvas(region.width, region.height)
+		const rctx = regionCanvas.getContext("2d")
+		if (!rctx) throw new Error("Could not get region context")
+
+		rctx.drawImage(
+			img,
+			region.x,
+			region.y,
+			region.width,
+			region.height,
+			0,
+			0,
+			region.width,
+			region.height,
+		)
+		const blurredRegion = new OffscreenCanvas(region.width, region.height)
+		const bctx = blurredRegion.getContext("2d")
+		if (!bctx) throw new Error("Could not get blur context")
+
+		bctx.filter = `blur(${radius}px)`
+		bctx.drawImage(regionCanvas, 0, 0)
+
+		// 3. Composite back
+		ctx.drawImage(blurredRegion, region.x, region.y)
+	} else {
+		// Full image blur
+		ctx.filter = `blur(${radius}px)`
+		ctx.drawImage(img, 0, 0)
+	}
+	close()
+
+	const mime = file.type || "image/png"
+	const blob = await canvas.convertToBlob({ type: mime })
+	const name = `${file.name.replace(/\.[^.]+$/, "")}-blurred${mimeToExt(mime)}`
+	return { blob, name }
+}
+
+export async function pixelateImage(
+	file: File,
+	size: number,
+	region?: { x: number; y: number; width: number; height: number },
+): Promise<ProcessedFile> {
+	const { img, width, height, close } = await loadDrawable(file)
+	const canvas = new OffscreenCanvas(width, height)
+	const ctx = canvas.getContext("2d")
+	if (!ctx) throw new Error("Could not get 2D context")
+
+	// 1. Draw original
+	ctx.drawImage(img, 0, 0)
+
+	const targetWidth = region?.width || width
+	const targetHeight = region?.height || height
+	const targetX = region?.x || 0
+	const targetY = region?.y || 0
+
+	if (targetWidth > 0 && targetHeight > 0) {
+		// Scale down the target area
+		const sw = Math.max(1, Math.floor(targetWidth / size))
+		const sh = Math.max(1, Math.floor(targetHeight / size))
+
+		const smallCanvas = new OffscreenCanvas(sw, sh)
+		const sctx = smallCanvas.getContext("2d")
+		if (!sctx) throw new Error("Could not get small 2D context")
+		sctx.drawImage(
+			img,
+			targetX,
+			targetY,
+			targetWidth,
+			targetHeight,
+			0,
+			0,
+			sw,
+			sh,
+		)
+
+		// Draw back with no smoothing
+		ctx.imageSmoothingEnabled = false
+		ctx.drawImage(
+			smallCanvas,
+			0,
+			0,
+			sw,
+			sh,
+			targetX,
+			targetY,
+			targetWidth,
+			targetHeight,
+		)
+	}
+	close()
+
+	const mime = file.type || "image/png"
+	const blob = await canvas.convertToBlob({ type: mime })
+	const name = `${file.name.replace(/\.[^.]+$/, "")}-pixelated${mimeToExt(mime)}`
+	return { blob, name }
+}
+
+export async function addImageWatermark(
+	file: File,
+	text: string,
+	options: { fontSize?: number; color?: string; opacity?: number } = {},
+): Promise<ProcessedFile> {
+	const { img, width, height, close } = await loadDrawable(file)
+	const canvas = new OffscreenCanvas(width, height)
+	const ctx = canvas.getContext("2d")
+	if (!ctx) throw new Error("Could not get 2D context")
+
+	ctx.drawImage(img, 0, 0)
+
+	const fontSize = options.fontSize || Math.floor(height / 15)
+	ctx.font = `${fontSize}px sans-serif`
+	ctx.fillStyle = options.color || "white"
+	ctx.globalAlpha = options.opacity || 0.4
+	ctx.textAlign = "right"
+	ctx.textBaseline = "bottom"
+	ctx.fillText(text, width - 20, height - 20)
+	close()
+
+	const mime = file.type || "image/png"
+	const blob = await canvas.convertToBlob({ type: mime })
+	const name = `${file.name.replace(/\.[^.]+$/, "")}-watermarked${mimeToExt(mime)}`
+	return { blob, name }
+}
+
 export async function imageToSvg(
 	file: File,
 	options: Record<string, unknown> = {},
 ): Promise<ProcessedFile> {
 	const ImageTracer = (await import("imagetracerjs")).default
 
-	const bitmap = await createImageBitmap(file)
-	const canvas = new OffscreenCanvas(bitmap.width, bitmap.height)
+	const { img, width, height, close } = await loadDrawable(file)
+	const canvas = new OffscreenCanvas(width, height)
 	const ctx = canvas.getContext("2d")
 	if (!ctx) throw new Error("Could not get 2D context")
 
-	ctx.drawImage(bitmap, 0, 0)
-	bitmap.close()
+	ctx.drawImage(img, 0, 0)
+	close()
 
 	const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height)
-
 	const svgString = ImageTracer.imagedataToSVG(imageData, {
-		numberofcolors: Number(options.numberofcolors) || 16,
+		numberofcolors: Number(options.numberofcolors) || 50,
 		...options,
 	})
 
 	const blob = new Blob([svgString], { type: "image/svg+xml" })
-	const name = file.name.replace(/\.[^.]+$/, "") + ".svg"
+	const name = `${file.name.replace(/\.[^.]+$/, "")}.svg`
 
 	return { blob, name }
 }

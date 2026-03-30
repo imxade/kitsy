@@ -41,7 +41,7 @@ function ToolPage() {
 
 			{/* Tool header */}
 			<div className="flex items-center gap-4 mb-8">
-				<span className="text-4xl">{tool.icon}</span>
+				{/* <span className="text-4xl">{tool.icon}</span> */}
 				<div>
 					<h1 className="text-2xl font-bold text-base-content">{tool.name}</h1>
 					<p className="text-base-content/60">{tool.description}</p>

@@ -447,6 +447,199 @@ export async function changeVideoSpeed(
 	}
 }
 
+export async function resizeVideo(
+	file: File,
+	width: number,
+	height: number,
+): Promise<ProcessedFile> {
+	const ff = await getFFmpeg()
+	const ext = getExtFromFile(file)
+	const inputName = `input${ext}`
+	const outputName = `resize${ext}`
+
+	await ff.writeFile(inputName, await fetchFile(file))
+	await ff.exec([
+		"-i",
+		inputName,
+		"-vf",
+		`scale=${width}:${height}`,
+		outputName,
+	])
+	const data = toBytes((await ff.readFile(outputName)) as Uint8Array)
+
+	await ff.deleteFile(inputName)
+	await ff.deleteFile(outputName)
+
+	const baseName = file.name.replace(/\.[^.]+$/, "")
+	return {
+		blob: new Blob([data], { type: file.type || "video/mp4" }),
+		name: `${baseName}-resized${ext}`,
+	}
+}
+
+export async function cropVideo(
+	file: File,
+	x: number,
+	y: number,
+	w: number,
+	h: number,
+): Promise<ProcessedFile> {
+	const ff = await getFFmpeg()
+	const ext = getExtFromFile(file)
+	const inputName = `input${ext}`
+	const outputName = `crop${ext}`
+
+	await ff.writeFile(inputName, await fetchFile(file))
+	await ff.exec([
+		"-i",
+		inputName,
+		"-vf",
+		`crop=${w}:${h}:${x}:${y}`,
+		outputName,
+	])
+	const data = toBytes((await ff.readFile(outputName)) as Uint8Array)
+
+	await ff.deleteFile(inputName)
+	await ff.deleteFile(outputName)
+
+	const baseName = file.name.replace(/\.[^.]+$/, "")
+	return {
+		blob: new Blob([data], { type: file.type || "video/mp4" }),
+		name: `${baseName}-cropped${ext}`,
+	}
+}
+
+export async function addVideoWatermark(
+	file: File,
+	text: string,
+): Promise<ProcessedFile> {
+	const ff = await getFFmpeg()
+	const ext = getExtFromFile(file)
+	const inputName = `input${ext}`
+	const watermarkName = "watermark.png"
+	const outputName = `watermarked${ext}`
+
+	// 1. Create a canvas for the watermark (100% offline reliable)
+	// We'll make it large enough for the text
+	const canvas = new OffscreenCanvas(400, 100)
+	const ctx = canvas.getContext("2d")
+	if (!ctx) throw new Error("Could not get canvas context")
+	ctx.font = "24px sans-serif"
+	ctx.fillStyle = "rgba(255, 255, 255, 0.5)"
+	ctx.textAlign = "right"
+	ctx.textBaseline = "bottom"
+	ctx.fillText(text, 390, 90)
+
+	const watermarkBlob = await canvas.convertToBlob({ type: "image/png" })
+	const watermarkBuffer = await watermarkBlob.arrayBuffer()
+
+	await ff.writeFile(inputName, await fetchFile(file))
+	await ff.writeFile(watermarkName, new Uint8Array(watermarkBuffer))
+
+	// 2. Use overlay filter instead of drawtext
+	// This avoids "font not found" errors in offline environments
+	await ff.exec([
+		"-i",
+		inputName,
+		"-i",
+		watermarkName,
+		"-filter_complex",
+		"overlay=W-w-10:H-h-10",
+		"-c:a",
+		"copy",
+		outputName,
+	])
+
+	const data = toBytes((await ff.readFile(outputName)) as Uint8Array)
+
+	await ff.deleteFile(inputName)
+	await ff.deleteFile(watermarkName)
+	await ff.deleteFile(outputName)
+
+	const baseName = file.name.replace(/\.[^.]+$/, "")
+	return {
+		blob: new Blob([data], { type: file.type || "video/mp4" }),
+		name: `${baseName}-watermarked${ext}`,
+	}
+}
+
+export async function extractFrames(file: File): Promise<ProcessedFile[]> {
+	const ff = await getFFmpeg()
+	const ext = getExtFromFile(file)
+	const inputName = `input${ext}`
+	const outputNamePattern = "frame_%03d.png"
+
+	await ff.writeFile(inputName, await fetchFile(file))
+	// Extract 1 frame per second
+	await ff.exec(["-i", inputName, "-vf", "fps=1", outputNamePattern])
+
+	const files = await ff.listDir(".")
+	const frameFiles = files
+		.filter((f) => f.name.startsWith("frame_") && f.name.endsWith(".png"))
+		.sort((a, b) => a.name.localeCompare(b.name))
+
+	const results: ProcessedFile[] = []
+	for (const f of frameFiles) {
+		const data = toBytes((await ff.readFile(f.name)) as Uint8Array)
+		results.push({
+			blob: new Blob([data], { type: "image/png" }),
+			name: f.name,
+		})
+		await ff.deleteFile(f.name)
+	}
+
+	await ff.deleteFile(inputName)
+	return results
+}
+
+export async function changeVolume(
+	file: File,
+	factor: number,
+): Promise<ProcessedFile> {
+	const ff = await getFFmpeg()
+	const ext = getExtFromFile(file)
+	const inputName = `input${ext}`
+	const outputName = `volume${ext}`
+
+	await ff.writeFile(inputName, await fetchFile(file))
+	await ff.exec(["-i", inputName, "-af", `volume=${factor}`, outputName])
+	const data = toBytes((await ff.readFile(outputName)) as Uint8Array)
+
+	await ff.deleteFile(inputName)
+	await ff.deleteFile(outputName)
+
+	const baseName = file.name.replace(/\.[^.]+$/, "")
+	return {
+		blob: new Blob([data], { type: file.type || "audio/mpeg" }),
+		name: `${baseName}-volume${ext}`,
+	}
+}
+
+export async function fadeAudio(
+	file: File,
+	type: "in" | "out",
+	duration: number,
+): Promise<ProcessedFile> {
+	const ff = await getFFmpeg()
+	const ext = getExtFromFile(file)
+	const inputName = `input${ext}`
+	const outputName = `fade${ext}`
+
+	await ff.writeFile(inputName, await fetchFile(file))
+	const filter = `afade=t=${type}:d=${duration}`
+	await ff.exec(["-i", inputName, "-af", filter, outputName])
+	const data = toBytes((await ff.readFile(outputName)) as Uint8Array)
+
+	await ff.deleteFile(inputName)
+	await ff.deleteFile(outputName)
+
+	const baseName = file.name.replace(/\.[^.]+$/, "")
+	return {
+		blob: new Blob([data], { type: file.type || "audio/mpeg" }),
+		name: `${baseName}-fade-${type}${ext}`,
+	}
+}
+
 // ── Helpers ──
 
 function getExtFromFile(file: File): string {

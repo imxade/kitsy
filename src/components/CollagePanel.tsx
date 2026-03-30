@@ -149,7 +149,7 @@ export default function CollagePanel({ files }: CollagePanelProps) {
 		// Deselect before export
 		setSelectedId(null)
 		setTimeout(() => {
-			const uri = stageRef.current!.toDataURL({
+			const uri = stageRef.current?.toDataURL({
 				mimeType: format === "jpg" ? "image/jpeg" : "image/png",
 				quality: 0.92,
 			})

@@ -12,6 +12,12 @@ import {
 	mergeAudioVideo,
 	muteVideo,
 	changeVideoSpeed,
+	resizeVideo,
+	cropVideo,
+	addVideoWatermark,
+	extractFrames,
+	changeVolume,
+	fadeAudio,
 	prefetchFFmpeg,
 } from "../../src/lib/ffmpeg-processor"
 
@@ -28,12 +34,18 @@ describe("ffmpeg-processor", () => {
 		expect(typeof mergeAudioVideo).toBe("function")
 		expect(typeof muteVideo).toBe("function")
 		expect(typeof changeVideoSpeed).toBe("function")
+		expect(typeof resizeVideo).toBe("function")
+		expect(typeof cropVideo).toBe("function")
+		expect(typeof addVideoWatermark).toBe("function")
+		expect(typeof extractFrames).toBe("function")
 	})
 
 	it("exports all audio processing functions", () => {
 		expect(typeof convertAudio).toBe("function")
 		expect(typeof trimAudio).toBe("function")
 		expect(typeof mergeAudio).toBe("function")
+		expect(typeof changeVolume).toBe("function")
+		expect(typeof fadeAudio).toBe("function")
 	})
 
 	it("exports GIF functions", () => {

@@ -76,6 +76,7 @@ export default defineConfig({
 			devOptions: {
 				enabled: true,
 			},
+			maximumFileSizeToCacheInBytes: 5 * 1024 * 1024, // 5MB
 		}),
 	],
 })

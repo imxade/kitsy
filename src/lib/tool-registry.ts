@@ -5,11 +5,13 @@ import type { ProcessedFile } from "./image-processor"
 import {
 	convertImage,
 	resizeImage,
-	compressImage,
 	rotateImage,
 	cropImage,
 	upscaleImage,
 	imageToSvg,
+	blurImage,
+	pixelateImage,
+	addImageWatermark,
 } from "./image-processor"
 import {
 	mergePdfs,
@@ -19,8 +21,17 @@ import {
 	imagesToPdf,
 	pdfToText,
 	pdfToImages,
+	compressPdf,
+	addPdfWatermark,
+	rotatePdf,
 } from "./pdf-processor"
-import { createZip } from "./file-processor"
+import {
+	createZip,
+	unzipFiles,
+	csvToJson,
+	jsonToCsv,
+	formatJson,
+} from "./file-processor"
 import {
 	convertVideo,
 	trimVideo,
@@ -34,6 +45,12 @@ import {
 	mergeAudioVideo,
 	muteVideo,
 	changeVideoSpeed,
+	resizeVideo,
+	cropVideo,
+	addVideoWatermark,
+	extractFrames,
+	changeVolume,
+	fadeAudio,
 } from "./ffmpeg-processor"
 
 export type ToolCategory =
@@ -44,6 +61,7 @@ export type ToolCategory =
 	| "gif"
 	| "file"
 	| "document"
+	| "data"
 
 export interface ToolOption {
 	id: string
@@ -191,36 +209,6 @@ const tools: ToolDefinition[] = [
 			batch(files, (f) =>
 				resizeImage(f, Number(opts.width), Number(opts.height)),
 			),
-	},
-	{
-		id: "image-compress",
-		name: "Compress Image",
-		description: "Reduce image file size with quality control",
-		category: "image",
-		icon: "🗜️",
-		acceptedExtensions: [
-			".png",
-			".jpg",
-			".jpeg",
-			".webp",
-			".avif",
-			".bmp",
-			".gif",
-			".svg",
-		],
-		multiple: true,
-		options: [
-			{
-				id: "quality",
-				label: "Quality (%)",
-				type: "number",
-				default: 70,
-				min: 10,
-				max: 100,
-			},
-		],
-		process: async (files, opts) =>
-			batch(files, (f) => compressImage(f, Number(opts.quality))),
 	},
 	{
 		id: "image-rotate",
@@ -854,17 +842,57 @@ const tools: ToolDefinition[] = [
 				// Pass through raw DOCX for docx-preview rendering in UI
 				return [{ blob: file, name: file.name }]
 			}
-			if (ext === ".xlsx" || ext === ".csv" || ext === ".ods") {
-				const xlsx = await import("xlsx")
-				const arrayBuffer = await file.arrayBuffer()
-				const workbook = xlsx.read(arrayBuffer)
-				const sheetName = workbook.SheetNames[0]
-				const htmlFragment = xlsx.utils.sheet_to_html(
-					workbook.Sheets[sheetName],
-				)
-				const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><style>body{font-family:sans-serif;padding:20px;} table { border-collapse: collapse; width: 100%; } th, td { border: 1px solid #ddd; padding: 8px; text-align: left; } th { background-color: #f2f2f2; }</style></head><body>${htmlFragment}</body></html>`
+			if (ext === ".xlsx") {
+				const ExcelJS = (await import("exceljs")).default
+				const workbook = new ExcelJS.Workbook()
+				await workbook.xlsx.load(await file.arrayBuffer())
+				const worksheet = workbook.worksheets[0]
+
+				let tableHtml =
+					'<table style="border-collapse:collapse;width:100%;font-size:14px;"><thead style="background:#f9fafb"><tr>'
+				worksheet.getRow(1).eachCell((cell) => {
+					tableHtml += `<th style="border:1px solid #e5e7eb;padding:8px;text-align:left;">${cell.text}</th>`
+				})
+				tableHtml += "</tr></thead><tbody>"
+
+				worksheet.eachRow((row, rowNumber) => {
+					if (rowNumber === 1) return
+					tableHtml += "<tr>"
+					row.eachCell({ includeEmpty: true }, (cell) => {
+						tableHtml += `<td style="border:1px solid #e5e7eb;padding:8px">${cell.text}</td>`
+					})
+					tableHtml += "</tr>"
+				})
+				tableHtml += "</tbody></table>"
+
+				const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><style>body{font-family:sans-serif;padding:20px;color:#374151;}</style></head><body>${tableHtml}</body></html>`
 				const blob = new Blob([html], { type: "text/html" })
 				return [{ blob, name: `${file.name}.html` }]
+			}
+			if (ext === ".csv") {
+				const Papa = (await import("papaparse")).default
+				const text = await file.text()
+				return new Promise((resolve) => {
+					Papa.parse(text, {
+						header: false,
+						skipEmptyLines: true,
+						complete: (results) => {
+							let tableHtml =
+								'<table style="border-collapse:collapse;width:100%;font-size:14px;"><tbody>'
+							for (const row of results.data as string[][]) {
+								tableHtml += "<tr>"
+								for (const cell of row) {
+									tableHtml += `<td style="border:1px solid #e5e7eb;padding:8px">${cell}</td>`
+								}
+								tableHtml += "</tr>"
+							}
+							tableHtml += "</tbody></table>"
+							const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><style>body{font-family:sans-serif;padding:20px;color:#374151;}</style></head><body>${tableHtml}</body></html>`
+							const blob = new Blob([html], { type: "text/html" })
+							resolve([{ blob, name: `${file.name}.html` }])
+						},
+					})
+				})
 			}
 			if (ext === ".txt" || ext === ".json") {
 				return [{ blob: file, name: file.name }]
@@ -907,6 +935,335 @@ const tools: ToolDefinition[] = [
 		options: [],
 		process: async (files) => [await createZip(files)],
 	},
+
+	// ── New Features Phase 11 ──
+
+	{
+		id: "image-blur",
+		name: "Blur Image",
+		description:
+			"Apply Gaussian blur effect to a selected region or the whole image",
+		category: "image",
+		icon: "🌫️",
+		acceptedExtensions: [
+			".png",
+			".jpg",
+			".jpeg",
+			".webp",
+			".avif",
+			".bmp",
+			".gif",
+			".svg",
+		],
+		multiple: false,
+		options: [
+			{
+				id: "radius",
+				label: "Blur Radius (px)",
+				type: "number",
+				default: 5,
+				min: 1,
+				max: 100,
+			},
+			{ id: "x", label: "X Offset", type: "number", default: 0 },
+			{ id: "y", label: "Y Offset", type: "number", default: 0 },
+			{ id: "cropWidth", label: "Region Width", type: "number", default: 400 },
+			{
+				id: "cropHeight",
+				label: "Region Height",
+				type: "number",
+				default: 400,
+			},
+		],
+		process: async (files, opts) => [
+			await blurImage(files[0], Number(opts.radius), {
+				x: Number(opts.x ?? 0),
+				y: Number(opts.y ?? 0),
+				width: Number(opts.cropWidth ?? 0),
+				height: Number(opts.cropHeight ?? 0),
+			}),
+		],
+	},
+	{
+		id: "image-pixelate",
+		name: "Pixelate Image",
+		description:
+			"Apply pixelation effect to a selected region or the whole image",
+		category: "image",
+		icon: "👾",
+		acceptedExtensions: [
+			".png",
+			".jpg",
+			".jpeg",
+			".webp",
+			".avif",
+			".bmp",
+			".gif",
+			".svg",
+		],
+		multiple: false,
+		options: [
+			{
+				id: "size",
+				label: "Pixel Size",
+				type: "number",
+				default: 10,
+				min: 2,
+				max: 100,
+			},
+			{ id: "x", label: "X Offset", type: "number", default: 0 },
+			{ id: "y", label: "Y Offset", type: "number", default: 0 },
+			{ id: "cropWidth", label: "Region Width", type: "number", default: 400 },
+			{
+				id: "cropHeight",
+				label: "Region Height",
+				type: "number",
+				default: 400,
+			},
+		],
+		process: async (files, opts) => [
+			await pixelateImage(files[0], Number(opts.size), {
+				x: Number(opts.x ?? 0),
+				y: Number(opts.y ?? 0),
+				width: Number(opts.cropWidth ?? 0),
+				height: Number(opts.cropHeight ?? 0),
+			}),
+		],
+	},
+	{
+		id: "image-watermark",
+		name: "Add Image Watermark",
+		description: "Add a text watermark",
+		category: "image",
+		icon: "🖋️",
+		acceptedExtensions: [
+			".png",
+			".jpg",
+			".jpeg",
+			".webp",
+			".avif",
+			".bmp",
+			".gif",
+			".svg",
+		],
+		multiple: true,
+		options: [
+			{ id: "text", label: "Watermark Text", type: "text", default: "Hanee" },
+		],
+		process: async (files, opts) =>
+			batch(files, (f) => addImageWatermark(f, String(opts.text))),
+	},
+	{
+		id: "pdf-compress",
+		name: "Compress PDF",
+		description: "Reduce PDF file size",
+		category: "pdf",
+		icon: "🗜️",
+		acceptedExtensions: [".pdf"],
+		multiple: true,
+		options: [],
+		process: async (files) => batch(files, (f) => compressPdf(f)),
+	},
+	{
+		id: "pdf-watermark",
+		name: "Add PDF Watermark",
+		description: "Add watermark to every page",
+		category: "pdf",
+		icon: "🖋️",
+		acceptedExtensions: [".pdf"],
+		multiple: true,
+		options: [
+			{
+				id: "text",
+				label: "Watermark Text",
+				type: "text",
+				default: "CONFIDENTIAL",
+			},
+		],
+		process: async (files, opts) =>
+			batch(files, (f) => addPdfWatermark(f, String(opts.text))),
+	},
+	{
+		id: "pdf-rotate",
+		name: "Rotate PDF",
+		description: "Rotate all pages",
+		category: "pdf",
+		icon: "🔄",
+		acceptedExtensions: [".pdf"],
+		multiple: true,
+		options: [
+			{
+				id: "angle",
+				label: "Angle",
+				type: "select",
+				options: [
+					{ label: "90°", value: "90" },
+					{ label: "180°", value: "180" },
+					{ label: "270°", value: "270" },
+				],
+				default: "90",
+			},
+		],
+		process: async (files, opts) =>
+			batch(files, (f) => rotatePdf(f, Number(opts.angle))),
+	},
+	{
+		id: "video-resize",
+		name: "Resize Video",
+		description: "Change video dimensions",
+		category: "video",
+		icon: "📐",
+		acceptedExtensions: [".mp4", ".mov", ".avi", ".webm", ".mkv"],
+		multiple: true,
+		options: [
+			{ id: "width", label: "Width", type: "number", default: 1280 },
+			{ id: "height", label: "Height", type: "number", default: 720 },
+		],
+		process: async (files, opts) =>
+			batch(files, (f) =>
+				resizeVideo(f, Number(opts.width), Number(opts.height)),
+			),
+	},
+	{
+		id: "video-crop",
+		name: "Crop Video",
+		description: "Crop video area",
+		category: "video",
+		icon: "✂️",
+		acceptedExtensions: [".mp4", ".mov", ".avi", ".webm", ".mkv"],
+		multiple: true,
+		options: [
+			{ id: "w", label: "Width", type: "number", default: 640 },
+			{ id: "h", label: "Height", type: "number", default: 480 },
+			{ id: "x", label: "X", type: "number", default: 0 },
+			{ id: "y", label: "Y", type: "number", default: 0 },
+		],
+		process: async (files, opts) =>
+			batch(files, (f) =>
+				cropVideo(
+					f,
+					Number(opts.x),
+					Number(opts.y),
+					Number(opts.w),
+					Number(opts.h),
+				),
+			),
+	},
+	{
+		id: "video-watermark",
+		name: "Add Video Watermark",
+		description: "Add text watermark to video",
+		category: "video",
+		icon: "🖋️",
+		acceptedExtensions: [".mp4", ".mov", ".avi", ".webm", ".mkv"],
+		multiple: true,
+		options: [{ id: "text", label: "Text", type: "text", default: "Hanee" }],
+		process: async (files, opts) =>
+			batch(files, (f) => addVideoWatermark(f, String(opts.text))),
+	},
+	{
+		id: "video-extract-frames",
+		name: "Extract Video Frames",
+		description: "Get 1 frame per second",
+		category: "video",
+		icon: "🖼️",
+		acceptedExtensions: [".mp4", ".mov", ".avi", ".webm", ".mkv"],
+		multiple: true,
+		options: [],
+		process: async (files) => {
+			const res: ProcessedFile[] = []
+			for (const f of files) res.push(...(await extractFrames(f)))
+			return res
+		},
+	},
+	{
+		id: "audio-volume",
+		name: "Change Volume",
+		description: "Adjust audio level",
+		category: "audio",
+		icon: "🔊",
+		acceptedExtensions: [".mp3", ".wav", ".ogg", ".aac", ".m4a"],
+		multiple: true,
+		options: [
+			{ id: "factor", label: "Volume Factor", type: "number", default: 1.5 },
+		],
+		process: async (files, opts) =>
+			batch(files, (f) => changeVolume(f, Number(opts.factor))),
+	},
+	{
+		id: "audio-fade",
+		name: "Audio Fade",
+		description: "Apply fade-in/fade-out",
+		category: "audio",
+		icon: "🔉",
+		acceptedExtensions: [".mp3", ".wav", ".ogg", ".aac", ".m4a"],
+		multiple: true,
+		options: [
+			{
+				id: "type",
+				label: "Fade Type",
+				type: "select",
+				options: [
+					{ label: "Fade In", value: "in" },
+					{ label: "Fade Out", value: "out" },
+				],
+				default: "in",
+			},
+			{ id: "duration", label: "Duration (s)", type: "number", default: 3 },
+		],
+		process: async (files, opts) =>
+			batch(files, (f) =>
+				fadeAudio(f, opts.type as "in" | "out", Number(opts.duration)),
+			),
+	},
+	{
+		id: "file-unzip",
+		name: "Unzip Files",
+		description: "Extract ZIP content",
+		category: "file",
+		icon: "📦",
+		acceptedExtensions: [".zip"],
+		multiple: true,
+		options: [],
+		process: async (files) => {
+			const res: ProcessedFile[] = []
+			for (const f of files) res.push(...(await unzipFiles(f)))
+			return res
+		},
+	},
+	{
+		id: "data-csv-to-json",
+		name: "CSV to JSON",
+		description: "Convert CSV to JSON",
+		category: "data",
+		icon: "📊",
+		acceptedExtensions: [".csv"],
+		multiple: true,
+		options: [],
+		process: async (files) => batch(files, (f) => csvToJson(f)),
+	},
+	{
+		id: "data-json-to-csv",
+		name: "JSON to CSV",
+		description: "Convert JSON array to CSV",
+		category: "data",
+		icon: "📝",
+		acceptedExtensions: [".json"],
+		multiple: true,
+		options: [],
+		process: async (files) => batch(files, (f) => jsonToCsv(f)),
+	},
+	{
+		id: "data-format-json",
+		name: "Format JSON",
+		description: "Prettify JSON data",
+		category: "data",
+		icon: "✨",
+		acceptedExtensions: [".json"],
+		multiple: true,
+		options: [],
+		process: async (files) => batch(files, (f) => formatJson(f)),
+	},
 ]
 
 // ── Lookup ──
@@ -930,4 +1287,5 @@ export const getCategories = (): {
 	{ id: "gif", label: "GIF Tools", icon: "🎞️" },
 	{ id: "document", label: "Document Tools", icon: "📑" },
 	{ id: "file", label: "File Utilities", icon: "📦" },
+	{ id: "data", label: "Data Tools", icon: "📊" },
 ]

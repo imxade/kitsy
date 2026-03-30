@@ -151,6 +151,69 @@ export async function imagesToPdf(files: File[]): Promise<ProcessedFile> {
 	}
 }
 
+export async function compressPdf(file: File): Promise<ProcessedFile> {
+	const bytes = await file.arrayBuffer()
+	const doc = await PDFDocument.load(bytes)
+	const compressedBytes = await doc.save({
+		useObjectStreams: true,
+	})
+	return {
+		blob: pdfBlob(new Uint8Array(compressedBytes)),
+		name: `${file.name.replace(/\.pdf$/i, "")}-compressed.pdf`,
+	}
+}
+
+export async function addPdfWatermark(
+	file: File,
+	text: string,
+): Promise<ProcessedFile> {
+	const bytes = await file.arrayBuffer()
+	const doc = await PDFDocument.load(bytes)
+	const { StandardFonts, rgb, degrees } = await import("pdf-lib")
+	const font = await doc.embedFont(StandardFonts.Helvetica)
+	const pages = doc.getPages()
+
+	for (const page of pages) {
+		const { width, height } = page.getSize()
+		page.drawText(text, {
+			x: width / 4,
+			y: height / 2,
+			size: 50,
+			font,
+			color: rgb(0.7, 0.7, 0.7),
+			opacity: 0.3,
+			rotate: degrees(45),
+		})
+	}
+
+	const watermarkedBytes = await doc.save()
+	return {
+		blob: pdfBlob(new Uint8Array(watermarkedBytes)),
+		name: `${file.name.replace(/\.pdf$/i, "")}-watermarked.pdf`,
+	}
+}
+
+export async function rotatePdf(
+	file: File,
+	angle: number,
+): Promise<ProcessedFile> {
+	const bytes = await file.arrayBuffer()
+	const doc = await PDFDocument.load(bytes)
+	const { degrees } = await import("pdf-lib")
+	const pages = doc.getPages()
+
+	for (const page of pages) {
+		const currentRotation = page.getRotation().angle
+		page.setRotation(degrees(currentRotation + angle))
+	}
+
+	const rotatedBytes = await doc.save()
+	return {
+		blob: pdfBlob(new Uint8Array(rotatedBytes)),
+		name: `${file.name.replace(/\.pdf$/i, "")}-rotated.pdf`,
+	}
+}
+
 let pdfjsInitialized = false
 
 async function getPdfjsLib() {

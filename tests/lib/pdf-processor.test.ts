@@ -5,6 +5,9 @@ import {
 	deletePdfPages,
 	reorderPdfPages,
 	imagesToPdf,
+	compressPdf,
+	addPdfWatermark,
+	rotatePdf,
 } from "../../src/lib/pdf-processor"
 import { createDummyPdf, createDummyImage } from "./test-helpers"
 
@@ -55,10 +58,29 @@ describe("pdf-processor", () => {
 	})
 
 	it("mergePdfs handles encrypted PDF gracefully", async () => {
-		// PDFDocument.create() produces an unencrypted PDF,
-		// but this verifies the ignoreEncryption flag does not break normal PDFs
 		const pdf = await createDummyPdf(1)
 		const result = await mergePdfs([pdf])
 		expect(result.blob.size).toBeGreaterThan(0)
+	})
+
+	it("compressPdf saves PDF and maintains type", async () => {
+		const pdf = await createDummyPdf(1)
+		const result = await compressPdf(pdf)
+		expect(result.name).toContain("-compressed.pdf")
+		expect(result.blob.type).toBe("application/pdf")
+	})
+
+	it("addPdfWatermark adds watermark text", async () => {
+		const pdf = await createDummyPdf(1)
+		const result = await addPdfWatermark(pdf, "TEST")
+		expect(result.name).toContain("-watermarked.pdf")
+		expect(result.blob.type).toBe("application/pdf")
+	})
+
+	it("rotatePdf applies rotation", async () => {
+		const pdf = await createDummyPdf(1)
+		const result = await rotatePdf(pdf, 90)
+		expect(result.name).toContain("-rotated.pdf")
+		expect(result.blob.type).toBe("application/pdf")
 	})
 })

@@ -6,6 +6,8 @@ Built as a Progressive Web App (PWA), it works offline and provides a modular, e
 
 > Please leave a star ⭐ to show your support.
 
+![hanee_showcase_part1_1774845380468](https://github.com/user-attachments/assets/adaa4847-4b21-483e-9838-58ff1e89c40f)
+
 ---
 
 ## Architecture
@@ -88,10 +90,10 @@ A static array of tool definitions. Each tool specifies its ID, name, category, 
 **Processor Functions** (`src/lib/*-processor.ts`)
 Stateless async functions that perform the actual file processing:
 
-* `image-processor.ts`; uses the Canvas API (`OffscreenCanvas`) for converting, resizing, and compressing images, and `imagetracerjs` for raster-to-SVG vectorization.
-* `pdf-processor.ts`; uses `pdf-lib` for modification and `pdfjs-dist` for rendering/text extraction.
-* `file-processor.ts`; uses `fflate` for creating ZIP archives.
-* `ffmpeg-processor.ts`; uses `@ffmpeg/ffmpeg` for video, audio, and GIF operations.
+* `image-processor.ts`; uses the Canvas API (`OffscreenCanvas`) for **Convert**, **Resize**, **Compress**, **Rotate**, **Crop**, **Upscale**, **Blur**, **Pixelate**, and **Watermark** (Text Overlay), and `imagetracerjs` for raster-to-SVG vectorization.
+* `pdf-processor.ts`; uses `pdf-lib` for **Merge**, **Split**, **Delete Pages**, **Reorder**, **Images to PDF**, **Compress**, **Watermark**, and **Rotate**, and `pdfjs-dist` for rendering/text extraction.
+* `file-processor.ts`; uses `fflate` for **ZIP creation** and **Extraction**, and native handlers for **CSV ↔ JSON** conversion and **JSON Formatting**.
+* `ffmpeg-processor.ts`; uses `@ffmpeg/ffmpeg` for Video/Audio **Convert**, **Trim**, **Merge**, **Mute**, **Speed**, **Resize**, **Crop**, **Watermark**, and **Frame Extraction**.
 * Document processing (DOCX via `docx-preview` in UI, XLSX/CSV/ODS via `xlsx`, TXT/JSON inline) is implemented within `tool-registry.ts`.
 * `CollagePanel.tsx`; uses `react-konva` for drag/resize/layer image collage with WASD movement and PNG/JPG export.
 

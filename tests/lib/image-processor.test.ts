@@ -1,12 +1,14 @@
 import { describe, it, expect } from "vitest"
 import {
 	convertImage,
-	compressImage,
 	resizeImage,
 	rotateImage,
 	cropImage,
 	upscaleImage,
 	imageToSvg,
+	blurImage,
+	pixelateImage,
+	addImageWatermark,
 } from "../../src/lib/image-processor"
 import { createDummyImage } from "./test-helpers"
 
@@ -17,12 +19,14 @@ import { createDummyImage } from "./test-helpers"
 describe("image-processor", () => {
 	it("exports all image processing functions", () => {
 		expect(typeof convertImage).toBe("function")
-		expect(typeof compressImage).toBe("function")
 		expect(typeof resizeImage).toBe("function")
 		expect(typeof rotateImage).toBe("function")
 		expect(typeof cropImage).toBe("function")
 		expect(typeof upscaleImage).toBe("function")
 		expect(typeof imageToSvg).toBe("function")
+		expect(typeof blurImage).toBe("function")
+		expect(typeof pixelateImage).toBe("function")
+		expect(typeof addImageWatermark).toBe("function")
 	})
 
 	it("createDummyImage produces a valid File object", () => {

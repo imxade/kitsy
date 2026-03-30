@@ -878,7 +878,9 @@ export default function ToolPanel({ tool }: ToolPanelProps) {
 						/>
 
 						{/* Rich file previews with inline remove buttons */}
-						{tool.id === "image-crop" &&
+						{(tool.id === "image-crop" ||
+							tool.id === "image-blur" ||
+							tool.id === "image-pixelate") &&
 						files.length > 0 &&
 						isImage(files[0]) ? (
 							<ImageCropPreview
