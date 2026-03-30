@@ -11,6 +11,16 @@ const serwist = new Serwist({
 	skipWaiting: true,
 	clientsClaim: true,
 	navigationPreload: false,
+	fallbacks: {
+		entries: [
+			{
+				url: "/",
+				matcher({ request }) {
+					return request.destination === "document"
+				},
+			},
+		],
+	},
 	runtimeCaching: defaultCache,
 })
 
