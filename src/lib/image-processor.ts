@@ -51,23 +51,25 @@ export async function loadDrawable(file: File): Promise<LoadedImage> {
 export async function convertImage(
 	file: File,
 	outputMime: string,
-	quality: number,
+	options: { quality?: number; numberofcolors?: number } = {},
 ): Promise<ProcessedFile> {
 	if (outputMime === "image/svg+xml") {
-		return imageToSvg(file, { numberofcolors: 50 })
+		return imageToSvg(file, {
+			numberofcolors: options.numberofcolors ?? 20,
+		})
 	}
 
 	const { img, width, height, close } = await loadDrawable(file)
 	const canvas = new OffscreenCanvas(width, height)
 	const ctx = canvas.getContext("2d")
-	if (!ctx) throw new Error("Could not get 2D context")
-	ctx.drawImage(img, 0, 0)
-	close()
+	if (!ctx) throw new Error("Could not get canvas context")
 
+	ctx.drawImage(img, 0, 0)
 	const blob = await canvas.convertToBlob({
 		type: outputMime,
-		quality: quality / 100,
+		quality: (options.quality ?? 85) / 100,
 	})
+	close()
 	const ext = mimeToExt(outputMime)
 	const name = file.name.replace(/\.[^.]+$/, "") + ext
 	return { blob, name }

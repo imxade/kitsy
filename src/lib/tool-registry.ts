@@ -55,7 +55,6 @@ export type ToolCategory =
 	| "image"
 	| "video"
 	| "audio"
-	| "gif"
 	| "file"
 	| "document"
 	| "data"
@@ -69,6 +68,7 @@ export interface ToolOption {
 	min?: number
 	max?: number
 	accept?: string
+	isVisible?: (options: Record<string, unknown>) => boolean
 }
 
 export interface ToolDefinition {
@@ -138,11 +138,24 @@ const tools: ToolDefinition[] = [
 				default: 85,
 				min: 10,
 				max: 100,
+				isVisible: (opts) => opts.format !== "image/svg+xml",
+			},
+			{
+				id: "numberofcolors",
+				label: "Number of Colors",
+				type: "number",
+				default: 40,
+				min: 2,
+				max: 256,
+				isVisible: (opts) => opts.format === "image/svg+xml",
 			},
 		],
 		process: async (files, opts) =>
 			batch(files, (f) =>
-				convertImage(f, String(opts.format), Number(opts.quality)),
+				convertImage(f, String(opts.format), {
+					quality: Number(opts.quality),
+					numberofcolors: Number(opts.numberofcolors),
+				}),
 			),
 	},
 	{
