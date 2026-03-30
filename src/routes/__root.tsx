@@ -5,14 +5,14 @@ import Header from "../components/Header"
 import { prefetchFFmpeg } from "../lib/ffmpeg-processor"
 import appCss from "../styles.css?url"
 
-const THEME_INIT_SCRIPT = `(function(){try{var t=localStorage.getItem('Hanee-theme')||'dracula';document.documentElement.setAttribute('data-theme',t);}catch(e){}})();`
+const THEME_INIT_SCRIPT = `(function(){try{var t=localStorage.getItem('Kitsy-theme')||'dracula';document.documentElement.setAttribute('data-theme',t);}catch(e){}})();`
 
 export const Route = createRootRoute({
 	head: () => ({
 		meta: [
 			{ charSet: "utf-8" },
 			{ name: "viewport", content: "width=device-width, initial-scale=1" },
-			{ title: "Hanee | Browser-Based File Tools" },
+			{ title: "Kitsy | Browser-Based File Tools" },
 			{
 				name: "description",
 				content:

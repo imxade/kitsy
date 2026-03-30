@@ -11,14 +11,14 @@ export default function Header() {
 						to="/"
 						className="text-xl font-extrabold text-base-content no-underline flex items-center gap-2 hover:opacity-80 transition-opacity"
 					>
-						Hanee
+						Kitsy
 					</Link>
 				</div>
 
 				{/* Nav */}
 				<div className="flex items-center gap-4">
 					<a
-						href="http://github.com/imxade/Hanee"
+						href="http://github.com/imxade/Kitsy"
 						target="_blank"
 						rel="noreferrer"
 						className="btn btn-ghost btn-circle btn-sm"

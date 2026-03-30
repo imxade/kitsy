@@ -5,7 +5,7 @@ type Theme = (typeof THEMES)[number]
 
 function getStoredTheme(): Theme {
 	if (typeof window === "undefined") return "dracula"
-	const stored = localStorage.getItem("Hanee-theme")
+	const stored = localStorage.getItem("Kitsy-theme")
 	if (stored === "dracula" || stored === "cupcake") return stored
 	return "dracula"
 }
@@ -23,7 +23,7 @@ export default function ThemeToggle() {
 		const next: Theme = theme === "dracula" ? "cupcake" : "dracula"
 		setTheme(next)
 		document.documentElement.setAttribute("data-theme", next)
-		localStorage.setItem("Hanee-theme", next)
+		localStorage.setItem("Kitsy-theme", next)
 	}
 
 	return (

@@ -1048,7 +1048,7 @@ const tools: ToolDefinition[] = [
 		],
 		multiple: true,
 		options: [
-			{ id: "text", label: "Watermark Text", type: "text", default: "Hanee" },
+			{ id: "text", label: "Watermark Text", type: "text", default: "Kitsy" },
 		],
 		process: async (files, opts) =>
 			batch(files, (f) => addImageWatermark(f, String(opts.text))),
@@ -1157,7 +1157,7 @@ const tools: ToolDefinition[] = [
 		icon: "🖋️",
 		acceptedExtensions: [".mp4", ".mov", ".avi", ".webm", ".mkv"],
 		multiple: true,
-		options: [{ id: "text", label: "Text", type: "text", default: "Hanee" }],
+		options: [{ id: "text", label: "Text", type: "text", default: "Kitsy" }],
 		process: async (files, opts) =>
 			batch(files, (f) => addVideoWatermark(f, String(opts.text))),
 	},

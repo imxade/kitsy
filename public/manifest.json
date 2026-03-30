@@ -1,6 +1,6 @@
 {
-  "name": "Hanee",
-  "short_name": "Hanee",
+  "name": "Kitsy",
+  "short_name": "Kitsy",
   "description": "Privacy-first file processing tools that run entirely in your browser",
   "start_url": "/",
   "display": "standalone",
