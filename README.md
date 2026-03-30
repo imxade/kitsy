@@ -1,8 +1,6 @@
 # Kitsy
 
-Kitsy is a privacy-first, serverless suite of file-processing tools that runs entirely in your browser. All operations are performed locally, ensuring your files remain on your device with no uploads or backend involvement.
-
-Built as a Progressive Web App (PWA), it works offline and provides a modular, extensible platform for handling documents, images, and media through a simple, consistent interface.
+Kitsy is a privacy-first, serverless suite of file-processing tools that runs entirely in your browser and can be installed as PWA for offline use. All operations are performed locally, ensuring your files remain on your device with no uploads or backend involvement.
 
 > Please leave a star ⭐ to show your support.
 
