@@ -2,10 +2,6 @@ name: CI
 
 on:
   workflow_dispatch:
-  push:
-    branches-ignore:
-      - main
-      - master
   pull_request:
     branches: [main]
 
