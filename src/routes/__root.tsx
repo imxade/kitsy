@@ -8,7 +8,7 @@ import { useEffect } from "react"
 import Footer from "../components/Footer"
 import Header from "../components/Header"
 import { prefetchFFmpeg } from "../lib/ffmpeg-processor"
-import appCss from "../styles.css?url"
+import "../styles.css"
 
 const THEME_INIT_SCRIPT = `(function(){try{var t=localStorage.getItem('Kitsy-theme')||'dracula';document.documentElement.setAttribute('data-theme',t);}catch(e){}})();`
 
@@ -24,10 +24,7 @@ export const Route = createRootRoute({
 					"Convert, edit, and process files entirely in your browser. No uploads, no servers.",
 			},
 		],
-		links: [
-			{ rel: "stylesheet", href: appCss },
-			{ rel: "manifest", href: "/manifest.json" },
-		],
+		links: [{ rel: "manifest", href: "/manifest.json" }],
 	}),
 	shellComponent: RootDocument,
 })
