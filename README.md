@@ -4,7 +4,11 @@ Kitsy is a privacy-first, serverless suite of file-processing tools that runs en
 
 > Please leave a star ⭐ to show your support.
 
-![hanee_showcase_part1_1774845380468](https://github.com/user-attachments/assets/52c92967-0ae1-4376-994d-b358039d24f3)
+|  |  |  |
+|---|---|---|
+| ![](https://github.com/user-attachments/assets/3674537c-a4c5-4854-bead-74954a7843e6) | ![](https://github.com/user-attachments/assets/d549a6e7-e082-4555-bf93-d0444608bf36) | ![](https://github.com/user-attachments/assets/f75111ea-d1ca-49a9-b7a9-7ccdbc0e976a) |
+| ![](https://github.com/user-attachments/assets/8a0da275-fc2a-4c4d-a3f2-e4ff34af56cb) | ![](https://github.com/user-attachments/assets/576dc989-4320-45c2-b13d-d7797c77f92d) | ![](https://github.com/user-attachments/assets/67a42f78-9565-41ed-98c4-1e18f752160b) |
+
 
 
 ---
