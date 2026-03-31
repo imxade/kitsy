@@ -1,4 +1,9 @@
-import { HeadContent, Scripts, createRootRoute } from "@tanstack/react-router"
+import {
+	HeadContent,
+	Scripts,
+	createRootRoute,
+	useRouter,
+} from "@tanstack/react-router"
 import { useEffect } from "react"
 import Footer from "../components/Footer"
 import Header from "../components/Header"
@@ -28,10 +33,13 @@ export const Route = createRootRoute({
 })
 
 function RootDocument({ children }: { children: React.ReactNode }) {
+	const router = useRouter()
+
 	useEffect(() => {
 		prefetchFFmpeg()
-		import("./tool.$id")
-	}, [])
+		// Preload the tool component chunk correctly using the router
+		router.preloadRoute({ to: "/tool/$id", params: { id: "image-convert" } })
+	}, [router])
 
 	return (
 		<html lang="en" data-theme="dracula" suppressHydrationWarning>
