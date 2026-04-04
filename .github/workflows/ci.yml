@@ -66,5 +66,6 @@ jobs:
           name: showcase-videos
           path: |
             test-results/
+            !test-results/**/trace.zip
             videos/
           retention-days: 30
