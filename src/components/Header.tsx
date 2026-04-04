@@ -2,6 +2,7 @@ import { Link } from "@tanstack/react-router"
 import ThemeToggle from "./ThemeToggle"
 import SearchBox from "./SearchBox"
 import Icon from "./Icon"
+import DebugConsole from "./DebugConsole"
 
 export default function Header() {
 	return (
@@ -30,6 +31,7 @@ export default function Header() {
 						<span className="sr-only">GitHub Repository</span>
 						<Icon name="github" />
 					</a>
+					<DebugConsole />
 					<ThemeToggle />
 				</div>
 			</div>
