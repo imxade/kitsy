@@ -11,6 +11,8 @@ dist-ssr
 .vinxi
 __unconfig*
 todos.json
-tests/fixtures
-tests/samples
+fixtures
+samples
 public/ffmpeg
+playwright-report/
+test-results/

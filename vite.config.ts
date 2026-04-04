@@ -1,3 +1,4 @@
+/// <reference types="vitest/config" />
 import { defineConfig, type ViteDevServer, type PreviewServer } from "vite"
 import { devtools } from "@tanstack/devtools-vite"
 import tsconfigPaths from "vite-tsconfig-paths"
@@ -44,7 +45,6 @@ export default defineConfig({
 
 	plugins: [
 		devtools(),
-
 		coopCoepMiddleware(),
 
 		nitro({
@@ -90,4 +90,8 @@ export default defineConfig({
 			maximumFileSizeToCacheInBytes: 50 * 1024 * 1024, // 50MB
 		}),
 	],
+
+	test: {
+		exclude: ["tests/e2e/**", "node_modules/**"],
+	},
 })

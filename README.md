@@ -4,18 +4,7 @@ Kitsy is a privacy-first, serverless suite of file-processing tools that runs en
 
 > Please leave a star ⭐ to show your support.
 
-
-
-https://github.com/user-attachments/assets/f9865175-f371-4a42-a2d9-6563e7e64c68
-
-
-
-<!--
-|  |  |  |
-|---|---|---|
-| ![](https://github.com/user-attachments/assets/3674537c-a4c5-4854-bead-74954a7843e6) | ![](https://github.com/user-attachments/assets/d549a6e7-e082-4555-bf93-d0444608bf36) | ![](https://github.com/user-attachments/assets/f75111ea-d1ca-49a9-b7a9-7ccdbc0e976a) |
-| ![](https://github.com/user-attachments/assets/8a0da275-fc2a-4c4d-a3f2-e4ff34af56cb) | ![](https://github.com/user-attachments/assets/576dc989-4320-45c2-b13d-d7797c77f92d) | ![](https://github.com/user-attachments/assets/67a42f78-9565-41ed-98c4-1e18f752160b) |
--->
+![hanee_showcase_part1_1774845380468](https://github.com/user-attachments/assets/52c92967-0ae1-4376-994d-b358039d24f3)
 
 
 ---
@@ -36,8 +25,8 @@ flowchart TD
     Processors --> FfmpegProc["ffmpeg-processor.ts<br/>(FFmpeg.wasm)"]
     Registry --> DocInline["Document Processing<br/>(inline in registry)"]
     DocInline --> docxPrev["docx-preview (DOCX)"]
-    DocInline --> xlsxLib["xlsx (XLSX/CSV/ODS)"]
-    DocInline --> fflateLib["fflate (PPTX)"]
+    DocInline --> xlsxLib["exceljs + papaparse<br/>(XLSX/CSV)"]
+    DocInline --> txtJson["Native (TXT/JSON)"]
     UI --> CollageUI["CollagePanel.tsx<br/>(react-konva)"]
 
     style ImgProc fill:#4ecdc4,color:#000
@@ -104,7 +93,7 @@ Stateless async functions that perform the actual file processing:
 * `pdf-processor.ts`; uses `pdf-lib` for **Merge**, **Split**, **Delete Pages**, **Reorder**, **Images to PDF**, **Compress**, **Watermark**, and **Rotate**, and `pdfjs-dist` for rendering/text extraction.
 * `file-processor.ts`; uses `fflate` for **ZIP creation** and **Extraction**, and native handlers for **CSV ↔ JSON** conversion and **JSON Formatting**.
 * `ffmpeg-processor.ts`; uses `@ffmpeg/ffmpeg` for Video/Audio **Convert**, **Trim**, **Merge**, **Mute**, **Speed**, **Resize**, **Crop**, **Watermark**, and **Frame Extraction**.
-* Document processing (DOCX via `docx-preview` in UI, XLSX/CSV/ODS via `xlsx`, TXT/JSON inline) is implemented within `tool-registry.ts`.
+* Document processing (DOCX via `docx-preview` in UI, XLSX via `exceljs`, CSV via `papaparse`, TXT/JSON inline) is implemented within `tool-registry.ts`.
 * `CollagePanel.tsx`; uses `react-konva` for drag/resize/layer image collage with WASD movement and PNG/JPG export.
 
 ---
@@ -141,7 +130,7 @@ flowchart LR
     Blob --> PF["{blob, name}"]
 ```
 
-All 6 image functions follow this exact pipeline. The `mimeToExt()` helper maps MIME types to file extensions. Quality parameter (0-1) is passed to `convertToBlob()` for lossy formats.
+All 8 image functions (Convert, Resize, Rotate, Crop, Upscale, Blur, Pixelate, Watermark) follow this exact pipeline. The `mimeToExt()` helper maps MIME types to file extensions. Quality parameter (0-1) is passed to `convertToBlob()` for lossy formats.
 
 ---
 
@@ -225,11 +214,9 @@ Special tool UIs: `image-crop` shows drag-to-crop overlay, `image-rotate` shows 
 
 ---
 
-## PWA & Offline
+## 2. PWA & Offline Support
+The application uses Vite-PWA with standard Service Workers to ensure the tools can be safely installed as a desktop or mobile application. Once initialized, the full FFmpeg WASM bundle and required visual libraries are durably cached locally, enabling unlimited airplane-mode file processing at peak hardware performance.
 
-Serwist is configured in `vite.config.ts` to precache all build output using `globPatterns: ['**/*']`. This includes HTML, JS, CSS, WASM binaries, and worker scripts. After the first load, the application and all WASM modules are available offline. There is no custom service worker logic; do not add any.
-
-User files are never cached. All processing is in-memory and ephemeral.
 
 ---
 
@@ -293,3 +280,47 @@ User files are never cached. All processing is in-memory and ephemeral.
 * The `acceptedExtensions` array must contain only strings starting with `.` or the wildcard `*`. MIME types go in `FileDropzone`'s accept attribute logic, not here.
 * Document viewer auto-triggers on file drop (no Run button). This is handled by the `useEffect` in `ToolPanel` that watches `tool.id === 'document-viewer'`.
 * biome enforces tab indentation, double quotes, and no semicolons. Run `npx biome check --write` to auto-fix.
+
+## Search
+
+The homepage search uses intent-aware scored ranking:
+
+* **Conversion queries**: `jpg to png` matches tools that accept the source extension and produce the target format
+* **Synonym expansion**: Common aliases (e.g. `shrink` → `compress`, `combine` → `merge`) automatically expand the query
+* **Ranked scoring**: Results are sorted by relevance — exact name matches score highest, followed by ID, description, category, and extension matches
+* **Rich results**: Search results show tool descriptions alongside names for easier identification
+
+---
+
+## 7. CI Pipeline and UI Showcase Generation
+
+The `showcase.spec.ts` handles the orchestration of driving Playwright around the UI, uploading custom generated royalty-free media `download-samples.ts` to `input[type="file"]`, waiting securely for the WASM pipeline to convert documents or videos, and gracefully logging all outputs directly to standard `.webm` frames.
+
+After test completion, the dedicated `concat-videos.ts` Node daemon scans the isolated browser recordings, matches against `SUCCESS` signals, precisely reads the runtime logs to losslessly extract and discard any uninteresting processing delays using FFmpeg `-c copy`, before ultimately seamlessly stringing all perfectly verified tools into one gigantic visual showcase bundle at `videos/full-showcase.webm`!
+
+```yaml
+# Simplified Flow
+[ GitHub Action ] 
+  |-- Web Server Startup (Vite preview port 3000)
+  |-- Asset Generation (download-samples.ts)
+  |-- Execute Playwright test loop over Tool Registry
+      |-- Playwright clicks tool -> Sets 4m Timeout -> Clicks Run
+      |-- Saves 40 independent Test WEBms on `testInfo.outputDir`
+  |-- Concat Videos Hook (`npx tsx tests/e2e/concat-videos.ts`)
+      |-- Maps `ffmpeg -t ...` and `-ss ...` with lossless stream copies to omit loading frames!
+      |-- Output seamlessly combined to `videos/full-showcase.webm`
+```
+
+### Stable Test IDs
+
+The UI exposes these `data-testid` attributes for E2E tests:
+
+* `file-input` — hidden file input in `FileDropzone`
+* `run-button` — the Run button in `ToolPanel`
+* `result-card` — the results container
+* `preview` — result preview sections (image/video/audio/text/doc)
+
+### ToolCard SEO
+
+Each `ToolCard` includes a `sr-only` div with the tool's description and accepted extensions, exposing metadata to search engines and screen readers without affecting the visual layout.
+
