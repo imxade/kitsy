@@ -346,6 +346,8 @@ function mimeToExt(mime: string): string {
 		"image/bmp": ".bmp",
 		"image/gif": ".gif",
 		"image/svg+xml": ".svg",
+		"image/x-icon": ".ico",
+		"image/vnd.microsoft.icon": ".ico",
 	}
 	return map[mime] ?? ".png"
 }

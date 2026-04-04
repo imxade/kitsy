@@ -76,7 +76,7 @@ export interface ToolDefinition {
 	name: string
 	description: string
 	category: ToolCategory
-	icon: string
+	icon: string // Tabler icon key (see ICON_MAP in components/Icon.tsx)
 	acceptedExtensions: string[]
 	multiple: boolean
 	options: ToolOption[]
@@ -105,7 +105,7 @@ const tools: ToolDefinition[] = [
 		name: "Convert Image",
 		description: "Convert between PNG, JPG, WebP, AVIF, BMP, and GIF",
 		category: "image",
-		icon: "🖼️",
+		icon: "image",
 		acceptedExtensions: [
 			".png",
 			".jpg",
@@ -114,6 +114,7 @@ const tools: ToolDefinition[] = [
 			".avif",
 			".bmp",
 			".svg",
+			".ico",
 		],
 		multiple: true,
 		options: [
@@ -128,6 +129,7 @@ const tools: ToolDefinition[] = [
 					{ label: "AVIF", value: "image/avif" },
 					{ label: "BMP", value: "image/bmp" },
 					{ label: "SVG", value: "image/svg+xml" },
+					{ label: "ICO", value: "image/x-icon" },
 				],
 				default: "image/png",
 			},
@@ -163,7 +165,7 @@ const tools: ToolDefinition[] = [
 		name: "Resize Image",
 		description: "Resize images to specific dimensions",
 		category: "image",
-		icon: "📐",
+		icon: "maximize",
 		acceptedExtensions: [
 			".png",
 			".jpg",
@@ -173,6 +175,7 @@ const tools: ToolDefinition[] = [
 			".bmp",
 			".gif",
 			".svg",
+			".ico",
 		],
 		multiple: true,
 		options: [
@@ -203,7 +206,7 @@ const tools: ToolDefinition[] = [
 		name: "Rotate Image",
 		description: "Rotate images by 90°, 180°, or 270°",
 		category: "image",
-		icon: "🔄",
+		icon: "rotate",
 		acceptedExtensions: [
 			".png",
 			".jpg",
@@ -213,6 +216,7 @@ const tools: ToolDefinition[] = [
 			".bmp",
 			".gif",
 			".svg",
+			".ico",
 		],
 		multiple: true,
 		options: [
@@ -236,7 +240,7 @@ const tools: ToolDefinition[] = [
 		name: "Crop Image",
 		description: "Crop images by specifying position and dimensions",
 		category: "image",
-		icon: "✂️",
+		icon: "scissors",
 		acceptedExtensions: [
 			".png",
 			".jpg",
@@ -246,6 +250,7 @@ const tools: ToolDefinition[] = [
 			".bmp",
 			".gif",
 			".svg",
+			".ico",
 		],
 		multiple: false,
 		options: [
@@ -297,7 +302,7 @@ const tools: ToolDefinition[] = [
 		name: "Upscale Image",
 		description: "Enlarge images with high-quality interpolation",
 		category: "image",
-		icon: "🔍",
+		icon: "maximize",
 		acceptedExtensions: [
 			".png",
 			".jpg",
@@ -307,6 +312,7 @@ const tools: ToolDefinition[] = [
 			".bmp",
 			".gif",
 			".svg",
+			".ico",
 		],
 		multiple: true,
 		options: [
@@ -329,7 +335,7 @@ const tools: ToolDefinition[] = [
 		name: "Merge PDF",
 		description: "Combine multiple PDF files into one",
 		category: "pdf",
-		icon: "📄",
+		icon: "pdf",
 		acceptedExtensions: [".pdf"],
 		multiple: true,
 		options: [],
@@ -340,7 +346,7 @@ const tools: ToolDefinition[] = [
 		name: "Split PDF",
 		description: "Extract individual pages from a PDF",
 		category: "pdf",
-		icon: "✂️",
+		icon: "scissors",
 		acceptedExtensions: [".pdf"],
 		multiple: false,
 		options: [],
@@ -351,7 +357,7 @@ const tools: ToolDefinition[] = [
 		name: "Delete PDF Pages",
 		description: "Remove specific pages from a PDF",
 		category: "pdf",
-		icon: "🗑️",
+		icon: "trash",
 		acceptedExtensions: [".pdf"],
 		multiple: false,
 		options: [],
@@ -370,7 +376,7 @@ const tools: ToolDefinition[] = [
 		name: "Reorder PDF Pages",
 		description: "Rearrange pages in a PDF by specifying new order",
 		category: "pdf",
-		icon: "🔀",
+		icon: "rotate",
 		acceptedExtensions: [".pdf"],
 		multiple: false,
 		options: [],
@@ -394,8 +400,16 @@ const tools: ToolDefinition[] = [
 		name: "Images to PDF",
 		description: "Combine images into a single PDF document",
 		category: "pdf",
-		icon: "📸",
-		acceptedExtensions: [".png", ".jpg", ".jpeg", ".webp", ".bmp", ".svg"],
+		icon: "image",
+		acceptedExtensions: [
+			".png",
+			".jpg",
+			".jpeg",
+			".webp",
+			".bmp",
+			".svg",
+			".ico",
+		],
 		multiple: true,
 		options: [],
 		process: async (files) => [await imagesToPdf(files)],
@@ -405,7 +419,7 @@ const tools: ToolDefinition[] = [
 		name: "PDF to Text",
 		description: "Extract text content from a PDF file",
 		category: "pdf",
-		icon: "📝",
+		icon: "text",
 		acceptedExtensions: [".pdf"],
 		multiple: false,
 		options: [],
@@ -417,7 +431,7 @@ const tools: ToolDefinition[] = [
 		name: "PDF to Images",
 		description: "Convert each PDF page to an image (PNG or JPG)",
 		category: "pdf",
-		icon: "🖼️",
+		icon: "image",
 		acceptedExtensions: [".pdf"],
 		multiple: false,
 		options: [
@@ -450,7 +464,7 @@ const tools: ToolDefinition[] = [
 		name: "Convert Video",
 		description: "Convert between MP4, WebM, MKV, AVI, GIF",
 		category: "video",
-		icon: "🎬",
+		icon: "video",
 		acceptedExtensions: [
 			".mp4",
 			".webm",
@@ -487,7 +501,7 @@ const tools: ToolDefinition[] = [
 		name: "Trim Video",
 		description: "Cut a segment from a video",
 		category: "video",
-		icon: "✂️",
+		icon: "scissors",
 		acceptedExtensions: [
 			".mp4",
 			".webm",
@@ -525,7 +539,7 @@ const tools: ToolDefinition[] = [
 		name: "Extract Audio",
 		description: "Extract audio track from a video file",
 		category: "video",
-		icon: "🔊",
+		icon: "audio",
 		acceptedExtensions: [
 			".mp4",
 			".webm",
@@ -558,7 +572,7 @@ const tools: ToolDefinition[] = [
 		name: "Merge Videos",
 		description: "Concatenate multiple video files into one",
 		category: "video",
-		icon: "🔗",
+		icon: "plus",
 		acceptedExtensions: [".mp4", ".webm", ".mkv", ".avi", ".mov"],
 		multiple: true,
 		options: [],
@@ -569,7 +583,7 @@ const tools: ToolDefinition[] = [
 		name: "Merge Audio into Video",
 		description: "Overlay an audio track onto a video file",
 		category: "video",
-		icon: "🎤",
+		icon: "music",
 		acceptedExtensions: [
 			".mp4",
 			".webm",
@@ -612,7 +626,7 @@ const tools: ToolDefinition[] = [
 		name: "Mute Video",
 		description: "Remove all audio tracks from a video",
 		category: "video",
-		icon: "🔇",
+		icon: "ghost",
 		acceptedExtensions: [
 			".mp4",
 			".webm",
@@ -631,7 +645,7 @@ const tools: ToolDefinition[] = [
 		name: "Change Video Speed",
 		description: "Speed up or slow down a video",
 		category: "video",
-		icon: "⚡",
+		icon: "adjust",
 		acceptedExtensions: [
 			".mp4",
 			".webm",
@@ -671,7 +685,7 @@ const tools: ToolDefinition[] = [
 		name: "Convert Audio",
 		description: "Convert between MP3, WAV, OGG, and AAC",
 		category: "audio",
-		icon: "🎵",
+		icon: "music",
 		acceptedExtensions: [
 			".mp3",
 			".wav",
@@ -705,7 +719,7 @@ const tools: ToolDefinition[] = [
 		name: "Trim Audio",
 		description: "Cut a segment from an audio file",
 		category: "audio",
-		icon: "✂️",
+		icon: "scissors",
 		acceptedExtensions: [
 			".mp3",
 			".wav",
@@ -743,7 +757,7 @@ const tools: ToolDefinition[] = [
 		name: "Merge Audio",
 		description: "Concatenate multiple audio files into one",
 		category: "audio",
-		icon: "🔗",
+		icon: "plus",
 		acceptedExtensions: [
 			".mp3",
 			".wav",
@@ -766,7 +780,7 @@ const tools: ToolDefinition[] = [
 		name: "Document Viewer",
 		description: "View Document files locally in the browser",
 		category: "document",
-		icon: "📄",
+		icon: "pdf",
 		acceptedExtensions: [
 			".pdf",
 			".docx",
@@ -854,7 +868,7 @@ const tools: ToolDefinition[] = [
 		name: "Image Collage",
 		description: "Arrange, resize, and layer images on a canvas",
 		category: "image",
-		icon: "🖼️",
+		icon: "image",
 		acceptedExtensions: [
 			".png",
 			".jpg",
@@ -864,6 +878,7 @@ const tools: ToolDefinition[] = [
 			".bmp",
 			".gif",
 			".svg",
+			".ico",
 		],
 		multiple: true,
 		options: [],
@@ -876,7 +891,7 @@ const tools: ToolDefinition[] = [
 		name: "Create ZIP",
 		description: "Bundle files into a ZIP archive",
 		category: "file",
-		icon: "📦",
+		icon: "file",
 		acceptedExtensions: ["*"],
 		multiple: true,
 		options: [],
@@ -891,7 +906,7 @@ const tools: ToolDefinition[] = [
 		description:
 			"Apply Gaussian blur effect to a selected region or the whole image",
 		category: "image",
-		icon: "🌫️",
+		icon: "droplet",
 		acceptedExtensions: [
 			".png",
 			".jpg",
@@ -901,6 +916,7 @@ const tools: ToolDefinition[] = [
 			".bmp",
 			".gif",
 			".svg",
+			".ico",
 		],
 		multiple: false,
 		options: [
@@ -937,7 +953,7 @@ const tools: ToolDefinition[] = [
 		description:
 			"Apply pixelation effect to a selected region or the whole image",
 		category: "image",
-		icon: "👾",
+		icon: "grid",
 		acceptedExtensions: [
 			".png",
 			".jpg",
@@ -982,7 +998,7 @@ const tools: ToolDefinition[] = [
 		name: "Add Image Watermark",
 		description: "Add a text watermark",
 		category: "image",
-		icon: "🖋️",
+		icon: "text",
 		acceptedExtensions: [
 			".png",
 			".jpg",
@@ -1005,7 +1021,7 @@ const tools: ToolDefinition[] = [
 		name: "Compress PDF",
 		description: "Reduce PDF file size",
 		category: "pdf",
-		icon: "🗜️",
+		icon: "minimize",
 		acceptedExtensions: [".pdf"],
 		multiple: true,
 		options: [],
@@ -1016,7 +1032,7 @@ const tools: ToolDefinition[] = [
 		name: "Add PDF Watermark",
 		description: "Add watermark to every page",
 		category: "pdf",
-		icon: "🖋️",
+		icon: "text",
 		acceptedExtensions: [".pdf"],
 		multiple: true,
 		options: [
@@ -1035,7 +1051,7 @@ const tools: ToolDefinition[] = [
 		name: "Rotate PDF",
 		description: "Rotate all pages",
 		category: "pdf",
-		icon: "🔄",
+		icon: "rotate",
 		acceptedExtensions: [".pdf"],
 		multiple: true,
 		options: [
@@ -1059,7 +1075,7 @@ const tools: ToolDefinition[] = [
 		name: "Resize Video",
 		description: "Change video dimensions",
 		category: "video",
-		icon: "📐",
+		icon: "maximize",
 		acceptedExtensions: [".mp4", ".mov", ".avi", ".webm", ".mkv"],
 		multiple: true,
 		options: [
@@ -1076,12 +1092,12 @@ const tools: ToolDefinition[] = [
 		name: "Crop Video",
 		description: "Crop video area",
 		category: "video",
-		icon: "✂️",
+		icon: "scissors",
 		acceptedExtensions: [".mp4", ".mov", ".avi", ".webm", ".mkv"],
 		multiple: true,
 		options: [
-			{ id: "w", label: "Width", type: "number", default: 640 },
-			{ id: "h", label: "Height", type: "number", default: 480 },
+			{ id: "cropWidth", label: "Width", type: "number", default: 640 },
+			{ id: "cropHeight", label: "Height", type: "number", default: 480 },
 			{ id: "x", label: "X", type: "number", default: 0 },
 			{ id: "y", label: "Y", type: "number", default: 0 },
 		],
@@ -1089,10 +1105,10 @@ const tools: ToolDefinition[] = [
 			batch(files, (f) =>
 				cropVideo(
 					f,
-					Number(opts.x),
-					Number(opts.y),
-					Number(opts.w),
-					Number(opts.h),
+					Number(opts.x ?? 0),
+					Number(opts.y ?? 0),
+					Number(opts.cropWidth ?? 640),
+					Number(opts.cropHeight ?? 480),
 				),
 			),
 	},
@@ -1101,7 +1117,7 @@ const tools: ToolDefinition[] = [
 		name: "Add Video Watermark",
 		description: "Add text watermark to video",
 		category: "video",
-		icon: "🖋️",
+		icon: "text",
 		acceptedExtensions: [".mp4", ".mov", ".avi", ".webm", ".mkv"],
 		multiple: true,
 		options: [{ id: "text", label: "Text", type: "text", default: "Kitsy" }],
@@ -1113,7 +1129,7 @@ const tools: ToolDefinition[] = [
 		name: "Extract Video Frames",
 		description: "Get 1 frame per second",
 		category: "video",
-		icon: "🖼️",
+		icon: "image",
 		acceptedExtensions: [".mp4", ".mov", ".avi", ".webm", ".mkv"],
 		multiple: true,
 		options: [],
@@ -1128,7 +1144,7 @@ const tools: ToolDefinition[] = [
 		name: "Change Volume",
 		description: "Adjust audio level",
 		category: "audio",
-		icon: "🔊",
+		icon: "play",
 		acceptedExtensions: [".mp3", ".wav", ".ogg", ".aac", ".m4a"],
 		multiple: true,
 		options: [
@@ -1142,7 +1158,7 @@ const tools: ToolDefinition[] = [
 		name: "Audio Fade",
 		description: "Apply fade-in/fade-out",
 		category: "audio",
-		icon: "🔉",
+		icon: "play",
 		acceptedExtensions: [".mp3", ".wav", ".ogg", ".aac", ".m4a"],
 		multiple: true,
 		options: [
@@ -1168,7 +1184,7 @@ const tools: ToolDefinition[] = [
 		name: "Unzip Files",
 		description: "Extract ZIP content",
 		category: "file",
-		icon: "📦",
+		icon: "file",
 		acceptedExtensions: [".zip"],
 		multiple: true,
 		options: [],
@@ -1183,7 +1199,7 @@ const tools: ToolDefinition[] = [
 		name: "CSV to JSON",
 		description: "Convert CSV to JSON",
 		category: "data",
-		icon: "📊",
+		icon: "data",
 		acceptedExtensions: [".csv"],
 		multiple: true,
 		options: [],
@@ -1194,7 +1210,7 @@ const tools: ToolDefinition[] = [
 		name: "JSON to CSV",
 		description: "Convert JSON array to CSV",
 		category: "data",
-		icon: "📝",
+		icon: "document",
 		acceptedExtensions: [".json"],
 		multiple: true,
 		options: [],
@@ -1205,7 +1221,7 @@ const tools: ToolDefinition[] = [
 		name: "Format JSON",
 		description: "Prettify JSON data",
 		category: "data",
-		icon: "✨",
+		icon: "adjust",
 		acceptedExtensions: [".json"],
 		multiple: true,
 		options: [],
@@ -1227,11 +1243,11 @@ export const getCategories = (): {
 	label: string
 	icon: string
 }[] => [
-	{ id: "pdf", label: "PDF Tools", icon: "📄" },
-	{ id: "image", label: "Image Tools", icon: "🖼️" },
-	{ id: "video", label: "Video Tools", icon: "🎬" },
-	{ id: "audio", label: "Audio Tools", icon: "🎵" },
-	{ id: "document", label: "Document Tools", icon: "📑" },
-	{ id: "file", label: "File Utilities", icon: "📦" },
-	{ id: "data", label: "Data Tools", icon: "📊" },
+	{ id: "pdf", label: "PDF Tools", icon: "pdf" },
+	{ id: "image", label: "Image Tools", icon: "image" },
+	{ id: "video", label: "Video Tools", icon: "video" },
+	{ id: "audio", label: "Audio Tools", icon: "audio" },
+	{ id: "document", label: "Document Tools", icon: "document" },
+	{ id: "file", label: "File Utilities", icon: "file" },
+	{ id: "data", label: "Data Tools", icon: "data" },
 ]
