@@ -1229,6 +1229,7 @@ export default function ToolPanel({ tool, presetDefaults }: ToolPanelProps) {
 												value={Number(options[opt.id] ?? opt.default)}
 												min={opt.min}
 												max={opt.max}
+												step={opt.step}
 												onChange={(e) =>
 													setOptions((p) => ({
 														...p,

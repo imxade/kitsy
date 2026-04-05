@@ -255,6 +255,7 @@ test.describe("Tool Showcase", () => {
 
 			// Save trim markers if we captured a processing wait period > 1s
 			if (cutStartSecs > 0 && cutEndSecs > cutStartSecs + 1 && testInfo.outputDir) {
+				mkdirSync(testInfo.outputDir, { recursive: true })
 				writeFileSync(
 					join(testInfo.outputDir, "trim.json"),
 					JSON.stringify({ cutStart: cutStartSecs, cutEnd: cutEndSecs }),
