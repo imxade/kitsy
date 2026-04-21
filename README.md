@@ -322,8 +322,10 @@ Each `ToolCard` includes a `sr-only` div with the tool's description and accepte
 
 # ToDo
 
-- recording tools
-  - screen recoding on desktop using navigator
+- full res recording tools
+  - screen recoding on desktop only using navigator
+    - option to add picture in picture camera and mic to the screen recording.
+    - resize and move the camera overlay
   - for both mobile and desktop
     - camera + mic
     - audio record
