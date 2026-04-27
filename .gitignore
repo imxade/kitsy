@@ -16,3 +16,4 @@ samples
 public/ffmpeg
 playwright-report/
 test-results/
+.codex
