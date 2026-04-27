@@ -331,5 +331,8 @@ Each `ToolCard` includes a `sr-only` div with the tool's description and accepte
     - audio record
 - todo list using localStorage() as well as option to download and upload the list, on upload the list in localstorage will get appended not overriden
 - check if something else obvious could be added
+- enable react compiler
+- make easy to make overall improvemenst which wont breack anything
+- check the biome tests and build test passes and fix them if needed
 - test everything end to end and update any thing related as well like tests and playwright scripts
 - then update the readme, note that all fetures should be reflected here, and if the readme is feeded to an llm it shoould be able to answer all the question in detail low level manner for both end user as well as developers
