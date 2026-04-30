@@ -106,7 +106,7 @@ Stateless async functions that perform the actual file processing:
 - Document processing (DOCX via `docx-preview` in UI, XLSX via `exceljs`, CSV via `papaparse`, TXT/JSON inline) is implemented within `tool-registry.ts`.
 - `CollagePanel.tsx`; uses `react-konva` for drag/resize/layer image collage with WASD movement and PNG/JPG export.
 - `RecorderPanel.tsx`; uses `MediaRecorder`, `navigator.mediaDevices.getUserMedia()`, `navigator.mediaDevices.getDisplayMedia()`, canvas compositing, and optional audio mixing to record screen, camera, and microphone input entirely locally.
-- `TodoListPanel.tsx`; uses `localStorage` for persistence, fuzzy search, inline autosave, reminder dates, JSON import/export helpers in `todo-list.ts`, inline clickable URL rendering, contenteditable plain-text editing, and optional automatic Google Drive sync. Imports always append/merge into the stored list instead of replacing it.
+- `TodoListPanel.tsx`; uses `localStorage` for primary persistence, fuzzy search, inline autosave, task completion toggling, reminder dates, JSON import/export, and optional automatic Google Drive sync. Imports and syncs always append/merge into the local list using a timestamp-based resolver instead of replacing data. Supports inline clickable URL rendering and contenteditable plain-text editing.
 
 ---
 
