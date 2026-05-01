@@ -15,10 +15,10 @@ export const DEFAULT_OVERLAY_RECT: OverlayRect = {
 }
 
 export function clampOverlayRect(rect: OverlayRect): OverlayRect {
-	const width = Math.min(Math.max(rect.width, 0.12), 0.45)
-	const height = Math.min(Math.max(rect.height, 0.12), 0.45)
-	const x = Math.min(Math.max(rect.x, 0), 1 - width)
-	const y = Math.min(Math.max(rect.y, 0), 1 - height)
+	const width = Math.round(Math.min(Math.max(rect.width, 0.12), 1.0) * 10000) / 10000
+	const height = Math.round(Math.min(Math.max(rect.height, 0.12), 1.0) * 10000) / 10000
+	const x = Math.round(Math.min(Math.max(rect.x, 0), 1 - width) * 10000) / 10000
+	const y = Math.round(Math.min(Math.max(rect.y, 0), 1 - height) * 10000) / 10000
 	return { x, y, width, height }
 }
 

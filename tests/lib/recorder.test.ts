@@ -15,9 +15,9 @@ describe("recorder helpers", () => {
 				height: 0.05,
 			}),
 		).toEqual({
-			x: 0.55,
+			x: 0.2,
 			y: 0,
-			width: 0.45,
+			width: 0.8,
 			height: 0.12,
 		})
 	})
