@@ -9,7 +9,20 @@ import AppShellProvider from "../components/AppShellProvider"
 import Header from "../components/Header"
 import "../styles.css"
 
-const THEME_INIT_SCRIPT = `(function(){try{var t=localStorage.getItem('Kitsy-theme')||'dracula';document.documentElement.setAttribute('data-theme',t);}catch(e){}})();`
+const THEME_INIT_SCRIPT = `
+try {
+	var t = localStorage.getItem('Kitsy-theme') || 'dracula';
+	document.documentElement.setAttribute('data-theme', t);
+} catch (e) {}
+`
+
+/**
+ * Map of route path prefixes to their dedicated PWA manifests.
+ * When installed from one of these routes, the PWA opens to that route.
+ */
+const ROUTE_MANIFESTS: Record<string, string> = {
+	"/tool/todo-list": "/manifest-todo.json",
+}
 
 export const Route = createRootRoute({
 	head: () => ({
@@ -21,6 +34,23 @@ export const Route = createRootRoute({
 				name: "description",
 				content:
 					"Convert, edit, and process files locally in your browser with optional Google Drive sync and offline-ready PWA support.",
+			},
+			{
+				httpEquiv: "Content-Security-Policy",
+				content:
+					"default-src 'self'; " +
+					// allow inline (needed), but restrict everything else
+					"script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval'; " +
+					"style-src 'self' 'unsafe-inline'; " +
+					"connect-src 'self' https://oauth2.googleapis.com https://www.googleapis.com; " +
+					"img-src 'self' data: blob:; " +
+					"media-src 'self' data: blob:; " +
+					"worker-src 'self' blob:; " +
+					"frame-src 'self' blob:; " +
+					"child-src 'self' blob:; " +
+					"object-src 'none'; " +
+					"base-uri 'self'; " +
+					"frame-ancestors 'none';",
 			},
 		],
 		links: [{ rel: "manifest", href: "/manifest.json" }],
@@ -35,6 +65,21 @@ function RootDocument({ children }: { children: React.ReactNode }) {
 		// Preload the tool component chunk correctly using the router
 		router.preloadRoute({ to: "/tool/$id", params: { id: "image-convert" } })
 	}, [router])
+
+	// Swap the manifest <link> based on the current route so PWAs installed
+	// from specific pages (e.g. /tool/todo-list) open to that route by default.
+	useEffect(() => {
+		const pathname = router.state.location.pathname
+		const manifestHref =
+			Object.entries(ROUTE_MANIFESTS).find(([prefix]) =>
+				pathname.startsWith(prefix),
+			)?.[1] ?? "/manifest.json"
+
+		const link = document.querySelector<HTMLLinkElement>('link[rel="manifest"]')
+		if (link && link.href !== new URL(manifestHref, location.origin).href) {
+			link.href = manifestHref
+		}
+	})
 
 	return (
 		<html lang="en" data-theme="dracula" suppressHydrationWarning>

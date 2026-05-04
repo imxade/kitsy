@@ -1,0 +1,21 @@
+{
+  "name": "Kitsy Todo",
+  "short_name": "Kitsy Todo",
+  "description": "Local-first todo list with Google Drive sync",
+  "start_url": "/tool/todo-list",
+  "display": "standalone",
+  "background_color": "#282a36",
+  "theme_color": "#bd93f9",
+  "icons": [
+    {
+      "src": "/logo192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/logo512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}
