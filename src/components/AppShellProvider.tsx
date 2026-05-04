@@ -10,15 +10,20 @@ import { prefetchFFmpeg } from "../lib/ffmpeg-processor"
 import type { ProcessedFile } from "../lib/image-processor"
 import {
 	ensureGoogleDriveResultsFolder,
+	handleOAuthCallback,
 	isGoogleDriveConfigured,
 	loadGoogleDriveTodoDocument,
+	refreshAccessToken,
 	rememberGoogleDriveConnection,
 	requestGoogleDriveSession,
 	revokeGoogleDriveSession,
 	saveGoogleDriveTodoDocument,
 	shouldReconnectGoogleDrive,
 	uploadFileToGoogleDrive,
+	type GoogleDriveSession,
 } from "../lib/google-drive"
+
+const SESSION_STORAGE_KEY = "kitsy.oauth.session"
 
 interface AppShellContextValue {
 	isOnline: boolean
@@ -86,6 +91,35 @@ function getOfflineReadyDismissed() {
 	}
 }
 
+function loadStoredSession(): GoogleDriveSession | null {
+	try {
+		const saved = window.localStorage.getItem(SESSION_STORAGE_KEY)
+		if (!saved) return null
+		const session = JSON.parse(saved) as GoogleDriveSession
+		// Must have a refresh token to be useful
+		if (!session.refreshToken) return null
+		return session
+	} catch {
+		return null
+	}
+}
+
+function saveStoredSession(session: GoogleDriveSession) {
+	try {
+		window.localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(session))
+	} catch {
+		// Ignore storage failures.
+	}
+}
+
+function clearStoredSession() {
+	try {
+		window.localStorage.removeItem(SESSION_STORAGE_KEY)
+	} catch {
+		// Ignore storage failures.
+	}
+}
+
 export function AppShellProvider({ children }: { children: ReactNode }) {
 	const configured = isGoogleDriveConfigured()
 	const [isOnline, setIsOnline] = useState(true)
@@ -97,33 +131,30 @@ export function AppShellProvider({ children }: { children: ReactNode }) {
 		configured ? "Drive disconnected" : "Drive unavailable",
 	)
 	const [cloudConnected, setCloudConnected] = useState(false)
-	const sessionRef = useRef<{
-		accessToken: string
-		expiresAt: number
-	} | null>(null)
-	const tokenPromiseRef = useRef<{
-		interactive: boolean
-		promise: Promise<string | null>
-	} | null>(null)
+	const sessionRef = useRef<GoogleDriveSession | null>(null)
+	const refreshPromiseRef = useRef<Promise<string | null> | null>(null)
+	const refreshTimerRef = useRef<number | null>(null)
 	const ensureAccessRef = useRef<
 		(interactive: boolean) => Promise<string | null>
 	>(async () => null)
 
+	// If this window is the OAuth popup callback, relay the code and close.
 	useEffect(() => {
-		if (typeof window !== "undefined") {
-			try {
-				const saved = window.localStorage.getItem("kitsy.oauth.session")
-				if (saved) {
-					const session = JSON.parse(saved)
-					if (session.expiresAt > Date.now() + 30000) {
-						sessionRef.current = session
-						setCloudConnected(true)
-						setCloudStatus("Drive connected")
-					}
-				}
-			} catch {
-				// Ignore
+		handleOAuthCallback()
+	}, [])
+
+	// Hydrate session from localStorage on mount
+	useEffect(() => {
+		if (typeof window === "undefined") return
+		const stored = loadStoredSession()
+		if (stored) {
+			sessionRef.current = stored
+			// If access token is still valid, mark as connected immediately
+			if (stored.expiresAt > Date.now() + 30_000) {
+				setCloudConnected(true)
+				setCloudStatus("Drive connected")
 			}
+			// If we have a refresh token, we can reconnect silently
 		}
 	}, [])
 
@@ -170,6 +201,49 @@ export function AppShellProvider({ children }: { children: ReactNode }) {
 		}
 	}, [])
 
+	// Schedule a proactive token refresh 2 minutes before expiry
+	const scheduleRefreshRef = useRef<(session: GoogleDriveSession) => void>(
+		() => undefined,
+	)
+	scheduleRefreshRef.current = (session: GoogleDriveSession) => {
+		if (refreshTimerRef.current) {
+			window.clearTimeout(refreshTimerRef.current)
+			refreshTimerRef.current = null
+		}
+
+		const msUntilExpiry = session.expiresAt - Date.now()
+		const refreshIn = Math.max(0, msUntilExpiry - 2 * 60 * 1000)
+
+		refreshTimerRef.current = window.setTimeout(() => {
+			void ensureAccessRef.current(false)
+		}, refreshIn)
+	}
+
+	const doRefresh = async (
+		currentSession: GoogleDriveSession,
+	): Promise<string | null> => {
+		try {
+			const result = await refreshAccessToken(currentSession.refreshToken)
+			const updated: GoogleDriveSession = {
+				...currentSession,
+				accessToken: result.accessToken,
+				expiresAt: result.expiresAt,
+				scope: result.scope,
+			}
+			sessionRef.current = updated
+			saveStoredSession(updated)
+			setCloudConnected(true)
+			setCloudStatus("Drive connected")
+			scheduleRefreshRef.current(updated)
+			return updated.accessToken
+		} catch {
+			// Refresh failed — token may be revoked or expired permanently
+			setCloudConnected(false)
+			setCloudStatus("Reconnect Drive to resume cloud sync.")
+			return null
+		}
+	}
+
 	const ensureAccess = async (interactive: boolean) => {
 		if (!configured) {
 			setCloudStatus("Drive unavailable")
@@ -181,86 +255,93 @@ export function AppShellProvider({ children }: { children: ReactNode }) {
 			return null
 		}
 
+		// Check if current access token is still valid
 		const existing = sessionRef.current
 		if (existing && existing.expiresAt > Date.now() + 30_000) {
 			setCloudConnected(true)
 			return existing.accessToken
 		}
 
-		const activeRequest = tokenPromiseRef.current
-		if (activeRequest) {
-			if (!interactive || activeRequest.interactive) {
-				return await activeRequest.promise
+		// If we have a refresh token, try silent refresh
+		if (existing?.refreshToken) {
+			// Deduplicate concurrent refresh calls
+			if (refreshPromiseRef.current) {
+				return await refreshPromiseRef.current
 			}
 
-			const silentToken = await activeRequest.promise
-			if (silentToken) return silentToken
+			setCloudStatus("Refreshing Drive session...")
+			const promise = doRefresh(existing)
+			refreshPromiseRef.current = promise
+
+			try {
+				const token = await promise
+				if (token) return token
+			} finally {
+				refreshPromiseRef.current = null
+			}
 		}
 
+		// No refresh token or refresh failed — need interactive consent
+		if (!interactive) {
+			setCloudConnected(false)
+			setCloudStatus("Reconnect Drive to resume cloud sync.")
+			return null
+		}
+
+		// Interactive: open consent popup
 		setCloudConnecting(true)
 		setCloudError(null)
-		setCloudStatus(
-			interactive ? "Connecting to Drive..." : "Refreshing Drive session...",
-		)
+		setCloudStatus("Connecting to Drive...")
 
-		const tokenPromise = (async () => {
-			try {
-				const session = await requestGoogleDriveSession({
-					prompt: interactive ? "select_account" : "none",
-				})
-				sessionRef.current = session
-				try {
-					window.localStorage.setItem(
-						"kitsy.oauth.session",
-						JSON.stringify(session),
-					)
-				} catch {}
-				rememberGoogleDriveConnection(true)
-				setCloudConnected(true)
-				setCloudStatus("Drive connected")
-				return session.accessToken
-			} catch (error) {
-				if (interactive) {
-					setCloudError(
-						error instanceof Error
-							? error.message
-							: "Google Drive authorization failed.",
-					)
-				}
-				setCloudConnected(false)
-				setCloudStatus(
-					interactive
-						? "Drive disconnected"
-						: "Reconnect Drive to resume cloud sync.",
-				)
-				return null
-			} finally {
-				setCloudConnecting(false)
-				if (tokenPromiseRef.current?.promise === tokenPromise) {
-					tokenPromiseRef.current = null
-				}
-			}
-		})()
-
-		tokenPromiseRef.current = {
-			interactive,
-			promise: tokenPromise,
+		try {
+			const session = await requestGoogleDriveSession()
+			sessionRef.current = session
+			saveStoredSession(session)
+			rememberGoogleDriveConnection(true)
+			setCloudConnected(true)
+			setCloudStatus("Drive connected")
+			scheduleRefreshRef.current(session)
+			return session.accessToken
+		} catch (error) {
+			setCloudError(
+				error instanceof Error
+					? error.message
+					: "Google Drive authorization failed.",
+			)
+			setCloudConnected(false)
+			setCloudStatus("Drive disconnected")
+			return null
+		} finally {
+			setCloudConnecting(false)
 		}
-		return await tokenPromise
 	}
 
 	ensureAccessRef.current = ensureAccess
 
+	// Automatic silent reconnect on page load
 	useEffect(() => {
 		if (!configured || !isOnline || !shouldReconnectGoogleDrive()) return
-		if (
-			sessionRef.current?.expiresAt &&
-			sessionRef.current.expiresAt > Date.now()
-		)
-			return
+		const stored = sessionRef.current
+		if (!stored?.refreshToken) return
 
+		// If access token is still valid, just schedule refresh
+		if (stored.expiresAt > Date.now() + 30_000) {
+			scheduleRefreshRef.current(stored)
+			return
+		}
+
+		// Access token expired, refresh silently
 		void ensureAccessRef.current(false)
 	}, [configured, isOnline])
+
+	// Clean up refresh timer on unmount
+	useEffect(() => {
+		return () => {
+			if (refreshTimerRef.current) {
+				window.clearTimeout(refreshTimerRef.current)
+			}
+		}
+	}, [])
 
 	const connectDrive = async () => {
 		const token = await ensureAccess(true)
@@ -268,21 +349,26 @@ export function AppShellProvider({ children }: { children: ReactNode }) {
 	}
 
 	const disconnectDrive = async () => {
-		const accessToken = sessionRef.current?.accessToken ?? null
+		const session = sessionRef.current
 		sessionRef.current = null
-		try {
-			window.localStorage.removeItem("kitsy.oauth.session")
-		} catch {}
+		if (refreshTimerRef.current) {
+			window.clearTimeout(refreshTimerRef.current)
+			refreshTimerRef.current = null
+		}
+		clearStoredSession()
 		rememberGoogleDriveConnection(false)
 		setCloudConnected(false)
 		setCloudError(null)
 		setCloudStatus(configured ? "Drive disconnected" : "Drive unavailable")
 
-		if (!accessToken) return
-		try {
-			await revokeGoogleDriveSession(accessToken)
-		} catch {
-			// Ignore expired/revoked token failures during disconnect.
+		// Revoke the refresh token (or access token) for clean disconnect
+		const tokenToRevoke = session?.refreshToken ?? session?.accessToken
+		if (tokenToRevoke) {
+			try {
+				await revokeGoogleDriveSession(tokenToRevoke)
+			} catch {
+				// Ignore expired/revoked token failures during disconnect.
+			}
 		}
 	}
 

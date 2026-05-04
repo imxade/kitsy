@@ -1,5 +1,3 @@
-const GOOGLE_IDENTITY_SCRIPT_URL = "https://accounts.google.com/gsi/client"
-
 export const GOOGLE_DRIVE_SCOPES = [
 	"https://www.googleapis.com/auth/drive.appdata",
 	"https://www.googleapis.com/auth/drive.file",
@@ -9,50 +7,13 @@ export const GOOGLE_DRIVE_RESULTS_FOLDER_NAME = "Kitsy"
 export const GOOGLE_DRIVE_TODO_FILE_NAME = "kitsy.todo-sync.v2.json"
 export const GOOGLE_DRIVE_CONNECTION_KEY = "kitsy.google-drive.connected"
 
-interface GoogleOauthErrorCallback {
-	type: "popup_failed_to_open" | "popup_closed" | "unknown"
-}
-
-interface GoogleTokenResponse {
-	access_token?: string
-	expires_in?: number
-	scope?: string
-	error?: string
-	error_description?: string
-}
-
-interface GoogleTokenClient {
-	requestAccessToken: (overrideConfig?: {
-		prompt?: "" | "none" | "consent" | "select_account"
-		login_hint?: string
-	}) => void
-}
-
-interface GoogleIdentity {
-	accounts: {
-		oauth2: {
-			initTokenClient: (config: {
-				client_id: string
-				scope: string
-				prompt?: "" | "none" | "consent" | "select_account"
-				login_hint?: string
-				callback: (response: GoogleTokenResponse) => void
-				error_callback?: (error: GoogleOauthErrorCallback) => void
-			}) => GoogleTokenClient
-			revoke: (
-				accessToken: string,
-				callback?: (response: {
-					successful?: boolean
-					error?: string
-					error_description?: string
-				}) => void,
-			) => void
-		}
-	}
-}
+const OAUTH_AUTHORIZE_URL = "https://accounts.google.com/o/oauth2/v2/auth"
+const OAUTH_TOKEN_URL = "https://oauth2.googleapis.com/token"
+const OAUTH_REVOKE_URL = "https://oauth2.googleapis.com/revoke"
 
 export interface GoogleDriveSession {
 	accessToken: string
+	refreshToken: string
 	expiresAt: number
 	scope: string
 }
@@ -65,16 +26,12 @@ export interface GoogleDriveFile {
 	webViewLink?: string
 }
 
-declare global {
-	interface Window {
-		google?: GoogleIdentity
-	}
-}
-
-let googleIdentityPromise: Promise<GoogleIdentity> | null = null
-
 function getGoogleDriveClientId() {
 	return (import.meta.env.VITE_GOOGLE_DRIVE_CLIENT_ID ?? "").trim()
+}
+
+function getGoogleDriveClientSecret() {
+	return (import.meta.env.VITE_GOOGLE_DRIVE_CLIENT_SECRET ?? "").trim()
 }
 
 function escapeDriveQueryValue(value: string) {
@@ -147,43 +104,267 @@ function createMultipartBody(metadata: Record<string, unknown>, blob: Blob) {
 	}
 }
 
-async function loadGoogleIdentity(): Promise<GoogleIdentity> {
-	if (window.google?.accounts?.oauth2) return window.google
-	if (googleIdentityPromise) return googleIdentityPromise
+// ── PKCE helpers ──
 
-	googleIdentityPromise = new Promise<GoogleIdentity>((resolve, reject) => {
-		const existing = document.querySelector<HTMLScriptElement>(
-			`script[src="${GOOGLE_IDENTITY_SCRIPT_URL}"]`,
-		)
-		if (existing) {
-			existing.addEventListener("load", () => {
-				if (window.google?.accounts?.oauth2) resolve(window.google)
-			})
-			existing.addEventListener("error", () => {
-				reject(new Error("Failed to load Google Identity Services."))
-			})
-			return
-		}
+function generateCodeVerifier(): string {
+	const array = new Uint8Array(32)
+	crypto.getRandomValues(array)
+	return base64UrlEncode(array)
+}
 
-		const script = document.createElement("script")
-		script.src = GOOGLE_IDENTITY_SCRIPT_URL
-		script.async = true
-		script.defer = true
-		script.onload = () => {
-			if (window.google?.accounts?.oauth2) {
-				resolve(window.google)
-				return
-			}
-			reject(new Error("Google Identity Services did not initialize."))
-		}
-		script.onerror = () => {
-			reject(new Error("Failed to load Google Identity Services."))
-		}
-		document.head.appendChild(script)
+async function generateCodeChallenge(verifier: string): Promise<string> {
+	const encoder = new TextEncoder()
+	const data = encoder.encode(verifier)
+	const digest = await crypto.subtle.digest("SHA-256", data)
+	return base64UrlEncode(new Uint8Array(digest))
+}
+
+function base64UrlEncode(buffer: Uint8Array): string {
+	let str = ""
+	for (const byte of buffer) {
+		str += String.fromCharCode(byte)
+	}
+	return btoa(str).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "")
+}
+
+// ── OAuth authorization code flow via popup ──
+
+function buildAuthUrl(
+	clientId: string,
+	codeChallenge: string,
+	redirectUri: string,
+): string {
+	const params = new URLSearchParams({
+		client_id: clientId,
+		redirect_uri: redirectUri,
+		response_type: "code",
+		scope: GOOGLE_DRIVE_SCOPES,
+		access_type: "offline",
+		prompt: "consent",
+		code_challenge: codeChallenge,
+		code_challenge_method: "S256",
+	})
+	return `${OAUTH_AUTHORIZE_URL}?${params.toString()}`
+}
+
+function openAuthPopup(url: string): Window {
+	const width = 500
+	const height = 600
+	const left = Math.max(0, window.screenX + (window.outerWidth - width) / 2)
+	const top = Math.max(0, window.screenY + (window.outerHeight - height) / 2)
+	const features = `width=${width},height=${height},left=${left},top=${top},scrollbars=yes,resizable=yes`
+	const popup = window.open(url, "kitsy-google-auth", features)
+	if (!popup) {
+		throw new Error("Google authorization popup failed to open.")
+	}
+	return popup
+}
+
+const OAUTH_STORAGE_KEY = "kitsy-oauth-callback"
+
+/**
+ * Call this once on app startup. If the current window is the OAuth popup
+ * (opened by the opener for Google consent), it extracts the authorization
+ * code from the URL, writes it to `localStorage`, and closes itself.
+ * The main window listens for the `storage` event to receive the code.
+ */
+export function handleOAuthCallback(): boolean {
+	if (typeof window === "undefined") return false
+
+	const params = new URLSearchParams(window.location.search)
+	const code = params.get("code")
+	const error = params.get("error")
+	const hasOAuthParams = code !== null || error !== null
+
+	if (!hasOAuthParams) return false
+
+	// We are the popup callback. Relay the result via localStorage.
+	// We use a timestamp to ensure the storage event fires even for duplicates.
+	const payload = JSON.stringify({
+		code: code ?? undefined,
+		error: error ?? undefined,
+		ts: Date.now(),
 	})
 
-	return googleIdentityPromise
+	window.localStorage.setItem(OAUTH_STORAGE_KEY, payload)
+
+	// Clean the URL so the app doesn't re-trigger on refresh
+	window.history.replaceState({}, "", window.location.pathname)
+
+	// Add a small delay before closing to ensure the storage event fires
+	// and is received by the opener window.
+	setTimeout(() => {
+		window.close()
+	}, 100)
+	return true
 }
+
+function waitForAuthCode(popup: Window): Promise<string> {
+	return new Promise((resolve, reject) => {
+		let settled = false
+
+		// Clear any old stale callback data first
+		window.localStorage.removeItem(OAUTH_STORAGE_KEY)
+
+		const cleanup = () => {
+			settled = true
+			clearInterval(closedPoll)
+			window.removeEventListener("storage", onStorage)
+			window.localStorage.removeItem(OAUTH_STORAGE_KEY)
+		}
+
+		const onStorage = (event: StorageEvent) => {
+			if (event.key !== OAUTH_STORAGE_KEY || !event.newValue) return
+			if (settled) return
+
+			cleanup()
+			popup.close()
+
+			try {
+				const data = JSON.parse(event.newValue)
+				if (data.error) {
+					reject(
+						new Error(
+							data.error === "access_denied"
+								? "Google authorization was denied."
+								: `Google authorization failed: ${data.error}`,
+						),
+					)
+					return
+				}
+
+				if (!data.code) {
+					reject(new Error("Google authorization failed: no code returned."))
+					return
+				}
+
+				resolve(data.code)
+			} catch {
+				reject(new Error("Failed to parse authorization response."))
+			}
+		}
+
+		// Poll only for popup closure (user manually closes the popup)
+		const closedPoll = setInterval(() => {
+			if (popup.closed && !settled) {
+				// Wait a brief moment to see if the storage event is in the queue
+				setTimeout(() => {
+					if (!settled) {
+						cleanup()
+						reject(
+							new Error("Google authorization was closed before it finished."),
+						)
+					}
+				}, 300)
+				clearInterval(closedPoll)
+			}
+		}, 500)
+
+		window.addEventListener("storage", onStorage)
+	})
+}
+
+async function exchangeCodeForTokens(
+	code: string,
+	codeVerifier: string,
+	redirectUri: string,
+): Promise<GoogleDriveSession> {
+	const clientId = getGoogleDriveClientId()
+	const clientSecret = getGoogleDriveClientSecret()
+
+	const body = new URLSearchParams({
+		client_id: clientId,
+		code,
+		code_verifier: codeVerifier,
+		grant_type: "authorization_code",
+		redirect_uri: redirectUri,
+	})
+	if (clientSecret) {
+		body.set("client_secret", clientSecret)
+	}
+
+	const response = await fetch(OAUTH_TOKEN_URL, {
+		method: "POST",
+		headers: { "Content-Type": "application/x-www-form-urlencoded" },
+		body,
+	})
+
+	if (!response.ok) {
+		let detail = "Token exchange failed."
+		try {
+			const data = await response.json()
+			if (data?.error_description) detail = data.error_description
+			else if (data?.error) detail = data.error
+		} catch {
+			// Ignore parsing failure.
+		}
+		throw new Error(detail)
+	}
+
+	const data = await response.json()
+	if (!data.access_token) {
+		throw new Error("Google Drive authorization failed: no access token.")
+	}
+	if (!data.refresh_token) {
+		throw new Error(
+			"Google Drive authorization failed: no refresh token. Re-authorize with full consent.",
+		)
+	}
+
+	return {
+		accessToken: data.access_token,
+		refreshToken: data.refresh_token,
+		expiresAt: Date.now() + (data.expires_in ?? 3600) * 1000,
+		scope: data.scope ?? GOOGLE_DRIVE_SCOPES,
+	}
+}
+
+export async function refreshAccessToken(
+	refreshToken: string,
+): Promise<{ accessToken: string; expiresAt: number; scope: string }> {
+	const clientId = getGoogleDriveClientId()
+	const clientSecret = getGoogleDriveClientSecret()
+
+	const body = new URLSearchParams({
+		client_id: clientId,
+		refresh_token: refreshToken,
+		grant_type: "refresh_token",
+	})
+	if (clientSecret) {
+		body.set("client_secret", clientSecret)
+	}
+
+	const response = await fetch(OAUTH_TOKEN_URL, {
+		method: "POST",
+		headers: { "Content-Type": "application/x-www-form-urlencoded" },
+		body,
+	})
+
+	if (!response.ok) {
+		let detail = "Token refresh failed."
+		try {
+			const data = await response.json()
+			if (data?.error_description) detail = data.error_description
+			else if (data?.error) detail = data.error
+		} catch {
+			// Ignore parsing failure.
+		}
+		throw new Error(detail)
+	}
+
+	const data = await response.json()
+	if (!data.access_token) {
+		throw new Error("Token refresh failed: no access token returned.")
+	}
+
+	return {
+		accessToken: data.access_token,
+		expiresAt: Date.now() + (data.expires_in ?? 3600) * 1000,
+		scope: data.scope ?? GOOGLE_DRIVE_SCOPES,
+	}
+}
+
+// ── Public API ──
 
 export function isGoogleDriveConfigured() {
 	return getGoogleDriveClientId().length > 0
@@ -201,71 +382,48 @@ export function shouldReconnectGoogleDrive() {
 	return window.localStorage.getItem(GOOGLE_DRIVE_CONNECTION_KEY) === "1"
 }
 
-export async function requestGoogleDriveSession({
-	prompt,
-}: {
-	prompt: "" | "none" | "consent" | "select_account"
-}): Promise<GoogleDriveSession> {
+/**
+ * Opens a popup for user consent and returns a session with both access and
+ * refresh tokens. Uses Authorization Code flow with PKCE. The popup only
+ * appears when the user explicitly clicks "Connect Drive". Silent renewal
+ * of expired access tokens is handled by `refreshAccessToken` using the
+ * stored refresh token — no popup needed.
+ */
+export async function requestGoogleDriveSession(): Promise<GoogleDriveSession> {
 	const clientId = getGoogleDriveClientId()
 	if (!clientId) {
 		throw new Error("Google Drive is not configured for this deployment.")
 	}
 
-	const google = await loadGoogleIdentity()
+	// 1. Open popup synchronously FIRST to avoid browser popup blockers,
+	// because `await generateCodeChallenge` will lose the transient user activation.
+	const popup = openAuthPopup("")
 
-	return await new Promise<GoogleDriveSession>((resolve, reject) => {
-		let settled = false
-		const fail = (message: string) => {
-			if (settled) return
-			settled = true
-			reject(new Error(message))
-		}
-		const succeed = (session: GoogleDriveSession) => {
-			if (settled) return
-			settled = true
-			resolve(session)
-		}
+	// 2. Generate PKCE params and build the auth URL
+	const redirectUri = `${window.location.origin}/`
+	const codeVerifier = generateCodeVerifier()
+	const codeChallenge = await generateCodeChallenge(codeVerifier)
+	const authUrl = buildAuthUrl(clientId, codeChallenge, redirectUri)
 
-		const client = google.accounts.oauth2.initTokenClient({
-			client_id: clientId,
-			scope: GOOGLE_DRIVE_SCOPES,
-			prompt,
-			callback: (response) => {
-				if (!response.access_token) {
-					fail(
-						response.error_description ||
-							response.error ||
-							"Google Drive authorization failed.",
-					)
-					return
-				}
+	// 3. Navigate the popup to the actual Google Auth URL
+	popup.location.href = authUrl
 
-				succeed({
-					accessToken: response.access_token,
-					expiresAt: Date.now() + (response.expires_in ?? 0) * 1000,
-					scope: response.scope ?? GOOGLE_DRIVE_SCOPES,
-				})
-			},
-			error_callback: (error) => {
-				const message =
-					error.type === "popup_closed"
-						? "Google authorization was closed before it finished."
-						: error.type === "popup_failed_to_open"
-							? "Google authorization popup failed to open."
-							: "Google authorization failed."
-				fail(message)
-			},
-		})
-
-		client.requestAccessToken({ prompt })
-	})
+	// 4. Wait for the user to complete the flow
+	const code = await waitForAuthCode(popup)
+	return await exchangeCodeForTokens(code, codeVerifier, redirectUri)
 }
 
-export async function revokeGoogleDriveSession(accessToken: string) {
-	const google = await loadGoogleIdentity()
-	await new Promise<void>((resolve) => {
-		google.accounts.oauth2.revoke(accessToken, () => resolve())
-	})
+export async function revokeGoogleDriveSession(token: string) {
+	try {
+		await fetch(`${OAUTH_REVOKE_URL}?token=${encodeURIComponent(token)}`, {
+			method: "POST",
+			headers: {
+				"Content-Type": "application/x-www-form-urlencoded",
+			},
+		})
+	} catch {
+		// Best-effort revocation; ignore failures for expired/already-revoked tokens.
+	}
 }
 
 export async function loadGoogleDriveTodoDocument(accessToken: string) {
