@@ -26,6 +26,9 @@ import {
 	compressPdf,
 	addPdfWatermark,
 	rotatePdf,
+	addPageNumbers,
+	flattenPdf,
+	editPdfMetadata,
 } from "./pdf-processor"
 import {
 	createZip,
@@ -1139,6 +1142,78 @@ const tools: ToolDefinition[] = [
 		],
 		process: async (files, opts) =>
 			batch(files, (f) => rotatePdf(f, Number(opts.angle))),
+	},
+	{
+		id: "pdf-page-numbers",
+		name: "Add Page Numbers",
+		description: "Stamp page numbers on every page of a PDF",
+		category: "pdf",
+		icon: "text",
+		acceptedExtensions: [".pdf"],
+		keywords: ["number pages", "page count", "footer", "header"],
+		multiple: true,
+		options: [
+			{
+				id: "position",
+				label: "Position",
+				type: "select",
+				options: [
+					{ label: "Bottom Center", value: "bottom-center" },
+					{ label: "Bottom Left", value: "bottom-left" },
+					{ label: "Bottom Right", value: "bottom-right" },
+					{ label: "Top Center", value: "top-center" },
+					{ label: "Top Left", value: "top-left" },
+					{ label: "Top Right", value: "top-right" },
+				],
+				default: "bottom-center",
+			},
+		],
+		process: async (files, opts) =>
+			batch(files, (f) => addPageNumbers(f, String(opts.position))),
+	},
+	{
+		id: "pdf-flatten",
+		name: "Flatten PDF",
+		description:
+			"Flatten interactive form fields (text boxes, checkboxes, dropdowns) into static, non-editable content",
+		category: "pdf",
+		icon: "minimize",
+		acceptedExtensions: [".pdf"],
+		keywords: ["flatten forms", "remove form fields", "lock pdf", "static pdf"],
+		multiple: true,
+		options: [],
+		process: async (files) => batch(files, (f) => flattenPdf(f)),
+	},
+	{
+		id: "pdf-metadata",
+		name: "Edit PDF Metadata",
+		description:
+			"Set or update the title, author, subject, and keywords of a PDF document",
+		category: "pdf",
+		icon: "data",
+		acceptedExtensions: [".pdf"],
+		keywords: ["pdf properties", "document info", "pdf author", "pdf title"],
+		multiple: false,
+		options: [
+			{ id: "title", label: "Title", type: "text", default: "" },
+			{ id: "author", label: "Author", type: "text", default: "" },
+			{ id: "subject", label: "Subject", type: "text", default: "" },
+			{
+				id: "keywords",
+				label: "Keywords (comma-separated)",
+				type: "text",
+				default: "",
+			},
+		],
+		process: async (files, opts) => [
+			await editPdfMetadata(
+				files[0],
+				String(opts.title || ""),
+				String(opts.author || ""),
+				String(opts.subject || ""),
+				String(opts.keywords || ""),
+			),
+		],
 	},
 	{
 		id: "video-resize",

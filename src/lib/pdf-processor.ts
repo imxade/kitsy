@@ -299,3 +299,105 @@ export async function pdfToImages(
 
 	return results
 }
+
+export async function addPageNumbers(
+	file: File,
+	position: string,
+): Promise<ProcessedFile> {
+	const bytes = await file.arrayBuffer()
+	const doc = await PDFDocument.load(bytes, { ignoreEncryption: true })
+	const font = await doc.embedFont(StandardFonts.Helvetica)
+	const pages = doc.getPages()
+	const total = pages.length
+
+	for (let i = 0; i < total; i++) {
+		const page = pages[i]
+		const { width, height } = page.getSize()
+		const text = `${i + 1} / ${total}`
+		const textWidth = font.widthOfTextAtSize(text, 12)
+
+		let x: number
+		let y: number
+
+		switch (position) {
+			case "top-left":
+				x = 40
+				y = height - 30
+				break
+			case "top-center":
+				x = (width - textWidth) / 2
+				y = height - 30
+				break
+			case "top-right":
+				x = width - textWidth - 40
+				y = height - 30
+				break
+			case "bottom-left":
+				x = 40
+				y = 20
+				break
+			case "bottom-right":
+				x = width - textWidth - 40
+				y = 20
+				break
+			default:
+				// bottom-center
+				x = (width - textWidth) / 2
+				y = 20
+				break
+		}
+
+		page.drawText(text, {
+			x,
+			y,
+			size: 12,
+			font,
+			color: rgb(0.3, 0.3, 0.3),
+		})
+	}
+
+	const numberedBytes = await doc.save()
+	const baseName = file.name.replace(/\.pdf$/i, "")
+	return {
+		blob: pdfBlob(numberedBytes),
+		name: `${baseName}-numbered.pdf`,
+	}
+}
+
+export async function flattenPdf(file: File): Promise<ProcessedFile> {
+	const bytes = await file.arrayBuffer()
+	const doc = await PDFDocument.load(bytes, { ignoreEncryption: true })
+	const form = doc.getForm()
+	form.flatten()
+	const flatBytes = await doc.save()
+	const baseName = file.name.replace(/\.pdf$/i, "")
+	return {
+		blob: pdfBlob(flatBytes),
+		name: `${baseName}-flattened.pdf`,
+	}
+}
+
+export async function editPdfMetadata(
+	file: File,
+	title: string,
+	author: string,
+	subject: string,
+	keywords: string,
+): Promise<ProcessedFile> {
+	const bytes = await file.arrayBuffer()
+	const doc = await PDFDocument.load(bytes, { ignoreEncryption: true })
+
+	if (title) doc.setTitle(title)
+	if (author) doc.setAuthor(author)
+	if (subject) doc.setSubject(subject)
+	if (keywords) {
+		doc.setKeywords(keywords.split(",").map((k) => k.trim()))
+	}
+
+	const metaBytes = await doc.save()
+	const baseName = file.name.replace(/\.pdf$/i, "")
+	return {
+		blob: pdfBlob(metaBytes),
+		name: `${baseName}-metadata.pdf`,
+	}
+}

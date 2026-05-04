@@ -8,6 +8,9 @@ import {
 	compressPdf,
 	addPdfWatermark,
 	rotatePdf,
+	addPageNumbers,
+	flattenPdf,
+	editPdfMetadata,
 } from "../../src/lib/pdf-processor"
 import { createDummyPdf, createDummyImage } from "./test-helpers"
 
@@ -30,8 +33,6 @@ describe("pdf-processor", () => {
 			expect(results[i].blob.type).toBe("application/pdf")
 		}
 	})
-
-
 
 	it("deletePdfPages removes a page from a 3-page PDF", async () => {
 		const pdf = await createDummyPdf(3, "Delete Test")
@@ -82,5 +83,35 @@ describe("pdf-processor", () => {
 		const result = await rotatePdf(pdf, 90)
 		expect(result.name).toContain("-rotated.pdf")
 		expect(result.blob.type).toBe("application/pdf")
+	})
+
+	it("addPageNumbers stamps page numbers on all pages", async () => {
+		const pdf = await createDummyPdf(3, "Numbered")
+		const result = await addPageNumbers(pdf, "bottom-center")
+		expect(result.name).toBe("test-numbered.pdf")
+		expect(result.blob.type).toBe("application/pdf")
+		expect(result.blob.size).toBeGreaterThan(0)
+	})
+
+	it("flattenPdf flattens form fields", async () => {
+		const pdf = await createDummyPdf(1)
+		const result = await flattenPdf(pdf)
+		expect(result.name).toBe("test-flattened.pdf")
+		expect(result.blob.type).toBe("application/pdf")
+		expect(result.blob.size).toBeGreaterThan(0)
+	})
+
+	it("editPdfMetadata sets document properties", async () => {
+		const pdf = await createDummyPdf(1)
+		const result = await editPdfMetadata(
+			pdf,
+			"My Title",
+			"John Doe",
+			"Test Subject",
+			"pdf, test, kitsy",
+		)
+		expect(result.name).toBe("test-metadata.pdf")
+		expect(result.blob.type).toBe("application/pdf")
+		expect(result.blob.size).toBeGreaterThan(0)
 	})
 })
