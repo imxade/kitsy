@@ -2,7 +2,10 @@
 
 Kitsy is a backendless, local-first toolbox for everyday file, media, document, recorder, and todo workflows. It runs in the browser, can be installed as an offline PWA, keeps file processing on the user's device, and does not require a Kitsy-owned server. Optional Google Drive support lets users auto-sync the todo list into their own hidden Drive app data and save processed outputs into their own Drive, while the app still works fully local-only when cloud is disconnected or unavailable.
 
-> Please leave a star ⭐ to show your support.
+> Please consider leaving a star ⭐
+
+> [!WARNING]
+> **Browser Extension Risk:** Disable all browser extensions for Kitsy, especially when connected to the cloud. Extensions with broad permissions can bypass security policies and access your Google Drive refresh token stored in `localStorage`.
 
 https://github.com/user-attachments/assets/f9865175-f371-4a42-a2d9-6563e7e64c68
 
@@ -31,7 +34,7 @@ flowchart TD
     UI --> RecorderUI["RecorderPanel.tsx<br/>(MediaRecorder + getDisplayMedia/getUserMedia)"]
     UI --> ShellUI["AppShellProvider.tsx<br/>(offline status + Drive auth/sync + PWA-ready toast)"]
     UI --> TodoUI["TodoListPanel.tsx<br/>(localStorage + Google Drive sync + JSON import/export)"]
-    ShellUI --> Drive["google-drive.ts<br/>(GIS OAuth + Drive REST)"]
+    ShellUI --> Drive["google-drive.ts<br/>(OAuth 2.0 PKCE + Drive REST)"]
 
     style ImgProc fill:#4ecdc4,color:#000
     style PdfProc fill:#ff6b6b,color:#000
@@ -75,7 +78,7 @@ All heavy media processing operations (Video, Audio, GIF) leverage WebAssembly (
 - **Virtual File System (VFS)**: When a tool process fires, the native `File` binary object is converted into an `ArrayBuffer` and mounted directly into the FFmpeg WASM internal VFS. The execution runs precisely as an isolated terminal binary (`ff.exec`).
 - **Worker Execution**: The FFmpeg core runs on its own dedicated thread, fetching `ffmpeg-core.wasm` asynchronously upon the first interaction.
 - **Ephemeral Memory Allocation**: As soon as the `outputName` buffer is intercepted from the VFS and cast back into a Blob, all trace targets (temporary `.mp4` payloads etc.) are immediately flushed via `ff.deleteFile()` to drastically preserve memory limitations and bypass manual streaming wipes.
-- **Security headers**: Vite dev, Vite preview, and Nitro responses set `COEP: require-corp` and `CORP: same-origin`. `COOP` is intentionally `same-origin-allow-popups` so Google Identity Services can complete OAuth popup communication after Drive consent. This is a deliberate compromise: the current `@ffmpeg/core` worker flow remains usable, but a future move to a strict `SharedArrayBuffer`/multi-thread FFmpeg build would need either route-level isolation for media tools or a redirect-based auth flow instead of the popup token flow.
+- **Security headers**: Vite dev, Vite preview, and Nitro responses set `COEP: require-corp` and `CORP: same-origin`. `COOP` is intentionally `same-origin-allow-popups` so the OAuth consent popup can communicate back to the opener window during the initial Drive authorization. After the first consent, session renewal uses a direct `fetch` to the token endpoint with a stored refresh token — no popup needed. This is a deliberate compromise: the current `@ffmpeg/core` worker flow remains usable, but a future move to a strict `SharedArrayBuffer`/multi-thread FFmpeg build would need either route-level isolation for media tools or a redirect-based auth flow instead of the popup consent flow.
 
 ---
 
@@ -88,25 +91,25 @@ Renders file input, option controls, live preview, progress indicators, download
 Maps URL routes to tool IDs using TanStack Start. The route `/tool/$id` is a single generic route; there are no per-tool route files. The tool ID from the URL is used to look up the tool definition in the Tool Registry.
 
 **App Shell Provider** (`src/components/AppShellProvider.tsx`)
-Tracks `navigator.onLine`, prefetches FFmpeg plus the service worker, surfaces the offline-ready toast, and owns the optional Google Drive session. Drive tokens are kept in memory only; the provider persists only a lightweight reconnect hint in `localStorage`. A silent reconnect can run on boot when that hint exists, but a user-initiated Connect click always gets its own interactive request if the silent attempt fails.
+Tracks `navigator.onLine`, prefetches FFmpeg plus the service worker, surfaces the offline-ready toast, and owns the optional Google Drive session. The session includes a long-lived refresh token stored in `localStorage`. On page load, if a refresh token exists, the provider silently exchanges it for a new access token via `POST https://oauth2.googleapis.com/token` — no popup or user interaction needed. A proactive timer refreshes the access token 2 minutes before expiry. A reconnect hint in `localStorage` triggers automatic silent reconnect on reload when a previous session existed. Popups only appear on explicit user-initiated "Connect Drive" clicks.
 
 **Tool Registry** (`src/lib/tool-registry.ts`)
 A static array of tool definitions. Each tool specifies its ID, name, category, accepted file types, UI options, UI mode, search metadata, and a `process` function. The `process` function takes `(files: File[], options)` and returns `ProcessedFile[]`; an array of `{blob, name}` objects. Tools that do not need uploaded files, such as recorders and the todo list, declare `requiresFiles: false` and a custom `uiMode` while still remaining discoverable through the same registry.
 
 **Google Drive Client** (`src/lib/google-drive.ts`)
-Loads Google Identity Services on demand, requests the non-sensitive `drive.file` and `drive.appdata` scopes, writes todo snapshots to the hidden `appDataFolder`, and uploads processed results to a visible `Kitsy` folder in the user's Drive. Upload tokens are never stored at rest. Google popup auth depends on `Cross-Origin-Opener-Policy: same-origin-allow-popups`; using strict `same-origin` makes GIS report popup closure while the consent window is still open.
+Implements a manual OAuth 2.0 Authorization Code flow with PKCE (no external script dependency). On first "Connect Drive", a popup opens to `accounts.google.com` with `access_type=offline` and `prompt=consent`. The returned authorization code is exchanged for an access token and a long-lived refresh token via a direct `fetch` to `https://oauth2.googleapis.com/token`. Subsequent session renewals use the refresh token — no popup, no GIS script, no user interaction. The module requests the non-sensitive `drive.file` and `drive.appdata` scopes, writes todo snapshots to the hidden `appDataFolder`, and uploads processed results to a visible `Kitsy` folder. The consent popup depends on `Cross-Origin-Opener-Policy: same-origin-allow-popups`; strict `same-origin` prevents the popup from communicating the auth code back to the opener.
 
 **Processor Functions** (`src/lib/*-processor.ts`)
 Stateless async functions that perform the actual file processing:
 
 - `image-processor.ts`; uses the Canvas API (`OffscreenCanvas`) for **Convert**, **Resize**, **Compress**, **Rotate**, **Crop**, **Upscale**, **Blur**, **Pixelate**, and **Watermark** (Text Overlay), and `imagetracerjs` for raster-to-SVG vectorization.
-- `pdf-processor.ts`; uses `pdf-lib` for **Merge**, **Split**, **Delete Pages**, **Reorder**, **Images to PDF**, **Compress**, **Watermark**, and **Rotate**, and `pdfjs-dist` for rendering/text extraction.
-- `file-processor.ts`; uses `fflate` for **ZIP creation** and **Extraction**, and native handlers for **CSV ↔ JSON** conversion and **JSON Formatting**.
-- `ffmpeg-processor.ts`; uses `@ffmpeg/ffmpeg` for Video/Audio **Convert**, **Trim**, **Merge**, **Mute**, **Speed**, **Resize**, **Crop**, **Watermark**, and **Frame Extraction**.
+- `pdf-processor.ts`; uses `pdf-lib` for **Merge**, **Split**, **Delete Pages**, **Reorder**, **Images to PDF**, **Compress**, **Watermark**, **Rotate**, **Add Page Numbers**, **Flatten Forms**, and **Edit Metadata**, and `pdfjs-dist` for rendering/text extraction.
+- `file-processor.ts`; uses `fflate` for **ZIP creation** and **Extraction**, `papaparse` for **CSV ↔ JSON** conversion, and native handlers for **JSON Formatting**.
+- `ffmpeg-processor.ts`; uses `@ffmpeg/ffmpeg` for Video/Audio **Convert**, **Trim**, **Merge**, **Mute**, **Volume**, **Fade**, **Speed**, **Resize**, **Crop**, **Watermark**, and **Frame Extraction**.
 - Document processing (DOCX via `docx-preview` in UI, XLSX via `exceljs`, CSV via `papaparse`, TXT/JSON inline) is implemented within `tool-registry.ts`.
 - `CollagePanel.tsx`; uses `react-konva` for drag/resize/layer image collage with WASD movement and PNG/JPG export.
 - `RecorderPanel.tsx`; uses `MediaRecorder`, `navigator.mediaDevices.getUserMedia()`, `navigator.mediaDevices.getDisplayMedia()`, canvas compositing, and optional audio mixing to record screen, camera, and microphone input entirely locally.
-- `TodoListPanel.tsx`; uses `localStorage` for primary persistence, fuzzy search, inline autosave, task completion toggling, reminder dates, JSON import/export, and optional automatic Google Drive sync. Imports and syncs always append/merge into the local list using a timestamp-based resolver instead of replacing data. Supports inline clickable URL rendering and contenteditable plain-text editing.
+- `TodoListPanel.tsx`; uses `localStorage` for primary persistence, fuzzy search, inline autosave, task completion toggling, reminder dates, pinning, JSON import/export, and optional automatic Google Drive sync. Imports and syncs always append/merge into the local list using a timestamp-based resolver instead of replacing data. Supports inline clickable URL rendering and contenteditable plain-text editing. Pin and delete actions are inline in the reminder row for a compact card layout.
 
 ---
 
@@ -136,19 +139,26 @@ sequenceDiagram
     actor User
     participant Header as Header / Todo UI
     participant Shell as AppShellProvider
-    participant GIS as Google Identity Services
+    participant Google as Google OAuth Server
     participant Drive as Google Drive REST API
     participant Store as localStorage
 
-    User->>Header: Click Connect Drive
+    User->>Header: Click cloud icon (Connect)
     Header->>Shell: cloud.connect()
-    Shell->>GIS: requestAccessToken(select_account)
-    GIS-->>Shell: access token + expiry
-    Shell->>Store: Save reconnect hint only
+    Shell->>Google: Popup: authorize (PKCE, access_type=offline)
+    Google-->>Shell: authorization code
+    Shell->>Google: POST /token (code + code_verifier)
+    Google-->>Shell: access token + refresh token
+    Shell->>Store: Save session (access + refresh tokens)
     Shell->>Drive: files.list(appDataFolder)
     Drive-->>Shell: Existing todo snapshot or empty result
     Shell->>Header: connected=true
     Header->>Drive: Save todo snapshot after debounce
+
+    Note over Shell,Google: On token expiry (silent, no popup)
+    Shell->>Google: POST /token (refresh_token)
+    Google-->>Shell: new access token
+    Shell->>Store: Update session
 ```
 
 ---
@@ -266,7 +276,7 @@ New local-first guarantees in this build:
 
 - Recorder tools use browser media APIs only. They do not upload streams or depend on any backend.
 - The todo list is persisted in `localStorage`, can sync to Google Drive `appDataFolder`, and still exports/imports plain local JSON without requiring any server round trip.
-- Cloud controls are disabled whenever the browser is offline, and the header shows a matching offline indicator.
+- Cloud controls are shown as a compact cloud status icon in the header (connected/disconnected/offline states) so the navbar remains uncluttered on small screens.
 - The app shows an offline-ready toast once FFmpeg and the service worker cache are ready for installed/PWA usage.
 - Search ranking, recorder result assembly, and React Compiler output are all runtime-local and continue to work offline once the app shell has been cached.
 
@@ -286,7 +296,7 @@ New local-first guarantees in this build:
 
 ## Google Drive Setup
 
-Kitsy uses the Google Identity Services token model directly in the browser. There is no redirect callback route and no Kitsy backend that can hide secrets, so only a public OAuth web client ID is used.
+Kitsy uses a manual OAuth 2.0 Authorization Code flow with PKCE directly in the browser. There is no Kitsy backend; the authorization code is exchanged for tokens via a direct `fetch` to Google's token endpoint. Both the client ID and optional client secret are embedded as build-time env vars (this is standard for public OAuth clients).
 
 1. Open Google Cloud Console and create or select a project.
 2. Enable the Google Drive API for that project.
@@ -298,26 +308,29 @@ Kitsy uses the Google Identity Services token model directly in the browser. The
 6. Add Authorized JavaScript origins for every environment that will open Kitsy, for example:
    - `http://localhost:3000`
    - `https://your-production-domain.example`
-7. Put the client ID in local env as `VITE_GOOGLE_DRIVE_CLIENT_ID=...`. The dev script loads `.env.local`, and Vite also reads standard `.env*` files.
-8. Keep the response headers from `vite.config.ts` or mirror them on the host:
+7. Add Authorized redirect URIs matching the origins (e.g. `http://localhost:3000/`, `https://your-production-domain.example/`).
+8. Put the client ID and client secret in local env:
+   - `VITE_GOOGLE_DRIVE_CLIENT_ID=...`
+   - `VITE_GOOGLE_DRIVE_CLIENT_SECRET=...` (from the OAuth client credentials page)
+   The dev script loads `.env.local`, and Vite also reads standard `.env*` files.
+9. Keep the response headers from `vite.config.ts` or mirror them on the host:
    - `Cross-Origin-Opener-Policy: same-origin-allow-popups`
    - `Cross-Origin-Embedder-Policy: require-corp`
    - `Cross-Origin-Resource-Policy: same-origin`
-9. Start the app, click Connect Drive, grant the two scopes, then verify the header changes to Disconnect Drive and the todo panel reports active Drive sync.
+10. Start the app, click the cloud icon in the header, grant the two scopes, then verify the icon turns green (connected) and the todo panel reports active Drive sync.
 
-If Google Console origins and scopes are already correct but the app says the authorization popup was closed while the popup is still open, check the COOP header first. Strict `same-origin` breaks the GIS popup communication path.
+If Google Console origins/redirect URIs are already correct but the app says the authorization popup was closed while the popup is still open, check the COOP header first. Strict `same-origin` prevents the popup from passing the authorization code back to the opener window.
 
 ---
 
 ## Security, Privacy, and Compromises
-
 - All file processors run locally in the browser. The app does not upload user files to a Kitsy server.
 - Google Drive is the only network storage integration. It is optional and disabled while offline.
-- Access tokens live in memory only. `localStorage` stores the todo list, the hidden Drive reconnect hint, and no Google token.
+- Access and refresh tokens are stored in `localStorage` for session persistence across page reloads. Refresh tokens allow the provider to silently obtain new access tokens via `POST https://oauth2.googleapis.com/token` — no popup or user interaction needed. A proactive timer refreshes the access token 2 minutes before expiry. A reconnect hint in `localStorage` triggers automatic silent reconnect on reload.
 - Todo sync writes one JSON document named `kitsy.todo-sync.v2.json` into Drive `appDataFolder`. Processed outputs are uploaded only when the user chooses Drive save actions and go into a visible `Kitsy` folder.
 - Todo editing uses contenteditable only as a plain-text editor. Paste is forced to `text/plain`, links are rendered by React from sanitized `http`/`https` text segments, and link anchors use `target="_blank"` with `noopener`.
 - DOCX preview rendering delegates document HTML to `docx-preview`; error text is inserted with `textContent`, not HTML.
-- The OAuth popup compatibility header is a conscious tradeoff. `same-origin-allow-popups` fixes GIS popup callbacks, while strict `same-origin` is stronger for cross-origin isolation. If the project later adopts a multi-thread FFmpeg core that strictly requires cross-origin isolation, split media processing into an isolated route/origin or change Drive auth to a redirect model.
+- The OAuth popup compatibility header is a conscious tradeoff. `same-origin-allow-popups` allows the initial consent popup to return the authorization code to the opener. After the first consent, token renewal is purely `fetch`-based and does not need a popup. Strict `same-origin` is stronger for cross-origin isolation but breaks the initial popup flow. If the project later adopts a multi-thread FFmpeg core that strictly requires cross-origin isolation, split media processing into an isolated route/origin or change Drive auth to a redirect model.
 
 ## Limitations
 
@@ -365,7 +378,7 @@ If Google Console origins and scopes are already correct but the app says the au
 ### Common Pitfalls
 
 - `Uint8Array<ArrayBufferLike>` from pdf-lib/fflate is not a valid `BlobPart` in TS6. Always `.slice()` before wrapping in `new Blob()`.
-- FFmpeg.wasm and OAuth both care about cross-origin headers. Keep `COEP: require-corp`, `CORP: same-origin`, and `COOP: same-origin-allow-popups` unless you intentionally redesign either FFmpeg isolation or Google auth. Strict `COOP: same-origin` can make Google Identity Services report `popup_closed` before consent finishes.
+- FFmpeg.wasm and OAuth both care about cross-origin headers. Keep `COEP: require-corp`, `CORP: same-origin`, and `COOP: same-origin-allow-popups` unless you intentionally redesign either FFmpeg isolation or Google auth. Strict `COOP: same-origin` prevents the initial OAuth consent popup from passing the authorization code back to the opener window.
 - The `acceptedExtensions` array must contain only strings starting with `.` or the wildcard `*`. MIME types go in `FileDropzone`'s accept attribute logic, not here.
 - Document viewer auto-triggers on file drop (no Run button). This is handled by the `useEffect` in `ToolPanel` that watches `tool.id === 'document-viewer'`.
 - biome enforces tab indentation, double quotes, and no semicolons. Run `npx biome check --write` to auto-fix.
@@ -417,14 +430,3 @@ The UI exposes these `data-testid` attributes for E2E tests:
 ### ToolCard SEO
 
 Each `ToolCard` includes a `sr-only` div with the tool's description and accepted extensions, exposing metadata to search engines and screen readers without affecting the visual layout.
-
-## Future
-
-> To be ignored for now
-
-- Gemini/Local LLM integrations with chatbox
-  - If gemini it'll be accessed via SSO
-  - User can upload file in the chatbox and ask AI to perform any operation on the file.
-  - AI should be able to understand the context and perform the operation based on the available tools.
-  - AI should be able to show preview of the result.
-  - Find a way for AI to interaction seemlessly with the tools.
