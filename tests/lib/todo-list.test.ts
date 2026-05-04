@@ -37,6 +37,7 @@ describe("todo list helpers", () => {
 				reminderDate: null,
 				deletedAt: null,
 				draft: false,
+				pinned: false,
 			},
 		]
 		const incoming: TodoItem[] = [
@@ -49,6 +50,7 @@ describe("todo list helpers", () => {
 				reminderDate: null,
 				deletedAt: null,
 				draft: false,
+				pinned: false,
 			},
 			{
 				id: "b",
@@ -59,6 +61,7 @@ describe("todo list helpers", () => {
 				reminderDate: null,
 				deletedAt: null,
 				draft: false,
+				pinned: false,
 			},
 		]
 
@@ -79,6 +82,7 @@ describe("todo list helpers", () => {
 				reminderDate: null,
 				deletedAt: null,
 				draft: false,
+				pinned: false,
 			},
 		])
 		expect(serialized).toContain("\n")

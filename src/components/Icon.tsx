@@ -40,6 +40,11 @@ import {
 	IconChevronUp,
 	IconChevronDown,
 	IconPlayerPlay,
+	IconPinned,
+	IconPinnedOff,
+	IconCloud,
+	IconCloudOff,
+	IconCloudCheck,
 } from "@tabler/icons-react"
 
 export const ICON_MAP = {
@@ -83,6 +88,11 @@ export const ICON_MAP = {
 	up: IconChevronUp,
 	down: IconChevronDown,
 	play: IconPlayerPlay,
+	pinned: IconPinned,
+	"pinned-off": IconPinnedOff,
+	cloud: IconCloud,
+	"cloud-off": IconCloudOff,
+	"cloud-check": IconCloudCheck,
 } as const
 
 export type IconName = keyof typeof ICON_MAP

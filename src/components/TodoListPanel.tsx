@@ -109,6 +109,7 @@ function EditableTodoCard({
 	onBlur,
 	onToggleComplete,
 	onReminderChange,
+	onTogglePin,
 	onRemove,
 }: {
 	item: TodoItem
@@ -117,6 +118,7 @@ function EditableTodoCard({
 	onBlur: () => void
 	onToggleComplete?: () => void
 	onReminderChange: (value: string | null) => void
+	onTogglePin?: () => void
 	onRemove?: () => void
 }) {
 	const editorRef = useRef<HTMLDivElement>(null)
@@ -200,7 +202,9 @@ function EditableTodoCard({
 			className={`rounded-xl border px-4 py-3 transition-all ${
 				reminderToday
 					? "border-warning/40 bg-warning/10"
-					: "border-base-content/10 bg-base-200/40"
+					: item.pinned
+						? "border-primary/30 bg-primary/5"
+						: "border-base-content/10 bg-base-200/40"
 			}`}
 			data-testid={isDraft ? "todo-draft" : "todo-item"}
 			onMouseEnter={() => setIsExpanded(true)}
@@ -324,19 +328,34 @@ function EditableTodoCard({
 						{isDraft && item.text.trim().length > 0 && (
 							<span>Autosaved draft</span>
 						)}
+						<div className="flex-1" />
+						{onTogglePin && (
+							<button
+								type="button"
+								className={`btn btn-ghost btn-xs btn-circle ${item.pinned ? "text-primary" : ""}`}
+								onClick={onTogglePin}
+								aria-label={
+									item.pinned
+										? `Unpin ${item.text || "todo"}`
+										: `Pin ${item.text || "todo"}`
+								}
+								title={item.pinned ? "Unpin" : "Pin to top"}
+							>
+								<Icon name={item.pinned ? "pinned" : "pinned-off"} size={14} />
+							</button>
+						)}
+						{onRemove && (
+							<button
+								type="button"
+								className="btn btn-ghost btn-xs btn-circle"
+								onClick={onRemove}
+								aria-label={`Remove ${item.text || "todo"}`}
+							>
+								<Icon name="trash" size={14} />
+							</button>
+						)}
 					</div>
 				</div>
-
-				{onRemove && (
-					<button
-						type="button"
-						className="btn btn-ghost btn-sm btn-circle mt-1"
-						onClick={onRemove}
-						aria-label={`Remove ${item.text || "todo"}`}
-					>
-						<Icon name="trash" size={16} />
-					</button>
-				)}
 			</div>
 		</fieldset>
 	)
@@ -350,6 +369,7 @@ function TodoSection({
 	onBlur,
 	onToggleComplete,
 	onReminderChange,
+	onTogglePin,
 	onRemove,
 }: {
 	title: string
@@ -359,6 +379,7 @@ function TodoSection({
 	onBlur: (id: string) => void
 	onToggleComplete: (id: string) => void
 	onReminderChange: (id: string, value: string | null) => void
+	onTogglePin: (id: string) => void
 	onRemove: (id: string) => void
 }) {
 	const reminderItems = items.filter((item) => isTodoReminderToday(item))
@@ -386,6 +407,7 @@ function TodoSection({
 							onBlur={() => onBlur(item.id)}
 							onToggleComplete={() => onToggleComplete(item.id)}
 							onReminderChange={(value) => onReminderChange(item.id, value)}
+							onTogglePin={() => onTogglePin(item.id)}
 							onRemove={() => onRemove(item.id)}
 						/>
 					))}
@@ -405,6 +427,7 @@ function TodoSection({
 						onBlur={() => onBlur(item.id)}
 						onToggleComplete={() => onToggleComplete(item.id)}
 						onReminderChange={(value) => onReminderChange(item.id, value)}
+						onTogglePin={() => onTogglePin(item.id)}
 						onRemove={() => onRemove(item.id)}
 					/>
 				))
@@ -624,6 +647,12 @@ export default function TodoListPanel() {
 		)
 	}
 
+	const togglePinItem = (id: string) => {
+		const item = items.find((entry) => entry.id === id)
+		if (!item) return
+		updateTodoItem(id, { pinned: !item.pinned })
+	}
+
 	const handleItemBlur = (id: string) => {
 		const item = items.find((entry) => entry.id === id)
 		if (!item) return
@@ -804,6 +833,7 @@ export default function TodoListPanel() {
 								onReminderChange={(id, value) =>
 									updateTodoItem(id, { reminderDate: value })
 								}
+								onTogglePin={togglePinItem}
 								onRemove={removeTodoItem}
 							/>
 							<TodoSection
@@ -820,6 +850,7 @@ export default function TodoListPanel() {
 								onReminderChange={(id, value) =>
 									updateTodoItem(id, { reminderDate: value })
 								}
+								onTogglePin={togglePinItem}
 								onRemove={removeTodoItem}
 							/>
 						</div>
@@ -838,6 +869,7 @@ export default function TodoListPanel() {
 							onReminderChange={(id, value) =>
 								updateTodoItem(id, { reminderDate: value })
 							}
+							onTogglePin={togglePinItem}
 							onRemove={removeTodoItem}
 						/>
 					)}

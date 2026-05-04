@@ -7,6 +7,7 @@ export interface TodoItem {
 	reminderDate: string | null
 	deletedAt: string | null
 	draft: boolean
+	pinned: boolean
 }
 
 export interface TodoSyncDocument {
@@ -37,6 +38,10 @@ function getTodoRevision(item: TodoItem) {
 }
 
 function compareTodoRevision(a: TodoItem, b: TodoItem) {
+	// Pinned items always come first
+	if (a.pinned && !b.pinned) return -1
+	if (!a.pinned && b.pinned) return 1
+
 	return (
 		getTodoRevision(b) - getTodoRevision(a) ||
 		Date.parse(b.createdAt) - Date.parse(a.createdAt) ||
@@ -60,6 +65,7 @@ function sanitizeTodoItem(
 				? raw.deletedAt
 				: null,
 		draft: Boolean(raw.draft),
+		pinned: Boolean(raw.pinned),
 	} satisfies TodoItem
 }
 
@@ -97,6 +103,7 @@ export function createTodoItem(
 		reminderDate: overrides.reminderDate ?? null,
 		deletedAt: overrides.deletedAt ?? null,
 		draft: overrides.draft ?? false,
+		pinned: overrides.pinned ?? false,
 	}
 }
 
