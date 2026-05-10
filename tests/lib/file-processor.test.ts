@@ -22,19 +22,24 @@ describe("file-processor", () => {
 		const result = await csvToJson(file)
 		expect(result.name).toBe("test.json")
 		expect(result.blob.type).toBe("application/json")
-		
+
 		const json = JSON.parse(await result.blob.text())
 		expect(json).toHaveLength(2)
 		expect(json[0].name).toBe("Alice")
 	})
 
 	it("jsonToCsv converts JSON array to CSV blob", async () => {
-		const data = [{ name: "Alice", age: 30 }, { name: "Bob", age: 25 }]
-		const file = new File([JSON.stringify(data)], "test.json", { type: "application/json" })
+		const data = [
+			{ name: "Alice", age: 30 },
+			{ name: "Bob", age: 25 },
+		]
+		const file = new File([JSON.stringify(data)], "test.json", {
+			type: "application/json",
+		})
 		const result = await jsonToCsv(file)
 		expect(result.name).toBe("test.csv")
 		expect(result.blob.type).toBe("text/csv")
-		
+
 		const csv = await result.blob.text()
 		expect(csv).toContain("name,age")
 		expect(csv).toContain("Alice,30")

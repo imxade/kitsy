@@ -46,7 +46,6 @@ describe("ffmpeg-processor", () => {
 		expect(typeof fadeAudio).toBe("function")
 	})
 
-
 	it("exports prefetchFFmpeg utility", () => {
 		expect(typeof prefetchFFmpeg).toBe("function")
 	})

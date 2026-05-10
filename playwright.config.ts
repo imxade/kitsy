@@ -1,4 +1,18 @@
-import { defineConfig, devices } from "@playwright/test"
+import { defineConfig } from "@playwright/test"
+import { devices } from "playwright-core"
+import chromium from "@sparticuz/chromium"
+
+const chromiumExecutablePath =
+	process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH ??
+	(await chromium.executablePath())
+const chromiumArgs = [
+	"--disable-web-security",
+	"--no-sandbox",
+	"--disable-setuid-sandbox",
+]
+const serverPort = Number(process.env.PLAYWRIGHT_PORT ?? 3000)
+const baseURL =
+	process.env.PLAYWRIGHT_BASE_URL ?? `http://localhost:${serverPort}`
 
 export default defineConfig({
 	testDir: "./tests/e2e",
@@ -9,7 +23,7 @@ export default defineConfig({
 	workers: 1,
 	reporter: [["html"], ["list"]],
 	use: {
-		baseURL: "http://localhost:3000",
+		baseURL,
 		colorScheme: "dark",
 		viewport: { width: 1280, height: 720 },
 		video: "on",
@@ -18,18 +32,21 @@ export default defineConfig({
 	},
 	projects: [
 		{
-			name: "chromium",
+			name: "sparticuz-chromium",
 			use: {
 				...devices["Desktop Chrome"],
 				viewport: { width: 1280, height: 720 },
-				launchOptions: { args: ["--disable-web-security"] },
+				launchOptions: {
+					executablePath: chromiumExecutablePath,
+					args: chromiumArgs,
+				},
 			},
 		},
 	],
 	webServer: {
-		command: "npm run build && npm run preview",
-		port: 3000,
-		reuseExistingServer: !process.env.CI,
+		command: `npm run build && npm run preview -- --port ${serverPort}`,
+		port: serverPort,
+		reuseExistingServer: process.env.PLAYWRIGHT_REUSE_SERVER === "1",
 		timeout: 120_000,
 	},
 })

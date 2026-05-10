@@ -1,43 +1,43 @@
 /// <reference types="vitest/config" />
 
-import { defineConfig, type ViteDevServer, type PreviewServer } from "vite"
+import { defineConfig } from "vite"
 import react from "@vitejs/plugin-react"
 import tailwindcss from "@tailwindcss/vite"
 import { devtools } from "@tanstack/devtools-vite"
 import { tanstackStart } from "@tanstack/react-start/plugin/vite"
 import { nitro } from "nitro/vite"
 import { serwist } from "@serwist/vite"
-import { readFileSync } from "node:fs"
+import { existsSync, readFileSync } from "node:fs"
 import { dirname, join } from "node:path"
 import { fileURLToPath } from "node:url"
 
-const entry = fileURLToPath(import.meta.resolve("@ffmpeg/core"))
-const pkgPath = join(dirname(entry), "..", "..", "package.json")
-const ffmpegPkg = JSON.parse(readFileSync(pkgPath, "utf-8"))
-const ffmpegCoreVersion = ffmpegPkg.version
-const crossOriginOpenerPolicy = "same-origin-allow-popups"
+const rootPkg = JSON.parse(readFileSync("package.json", "utf-8"))
 
-function coopCoepDevOnly() {
-	return {
-		name: "coop-coep-dev",
-		configureServer(server: ViteDevServer) {
-			server.middlewares.use((_req, res, next) => {
-				res.setHeader("Cross-Origin-Opener-Policy", crossOriginOpenerPolicy)
-				res.setHeader("Cross-Origin-Embedder-Policy", "require-corp")
-				res.setHeader("Cross-Origin-Resource-Policy", "same-origin")
-				next()
-			})
-		},
-		configurePreviewServer(server: PreviewServer) {
-			server.middlewares.use((_req, res, next) => {
-				res.setHeader("Cross-Origin-Opener-Policy", crossOriginOpenerPolicy)
-				res.setHeader("Cross-Origin-Embedder-Policy", "require-corp")
-				res.setHeader("Cross-Origin-Resource-Policy", "same-origin")
-				next()
-			})
-		},
+function packageVersion(packageName: string): string {
+	try {
+		const entry = fileURLToPath(import.meta.resolve(packageName))
+		let current = dirname(entry)
+		while (current !== dirname(current)) {
+			const pkgPath = join(current, "package.json")
+			if (existsSync(pkgPath)) {
+				const pkg = JSON.parse(readFileSync(pkgPath, "utf-8"))
+				if (pkg.name === packageName) return pkg.version
+			}
+			current = dirname(current)
+		}
+	} catch {
+		// The package may not be installed yet during a fresh checkout.
 	}
+
+	return (
+		rootPkg.dependencies?.[packageName] ??
+		rootPkg.devDependencies?.[packageName] ??
+		"uninstalled"
+	)
 }
+
+const ffmpegCoreVersion = packageVersion("@ffmpeg/core")
+const qpdfWasmVersion = packageVersion("@neslinesli93/qpdf-wasm")
 
 export default defineConfig({
 	server: {
@@ -51,7 +51,6 @@ export default defineConfig({
 	},
 	plugins: [
 		devtools(),
-		coopCoepDevOnly(),
 		tanstackStart({
 			// router: {
 			// 	autoCodeSplitting: false,
@@ -72,15 +71,6 @@ export default defineConfig({
 			externals: {
 				external: ["@sentry/*"],
 			},
-			routeRules: {
-				"/**": {
-					headers: {
-						"Cross-Origin-Opener-Policy": crossOriginOpenerPolicy,
-						"Cross-Origin-Embedder-Policy": "require-corp",
-						"Cross-Origin-Resource-Policy": "same-origin",
-					},
-				},
-			},
 		}),
 		serwist({
 			swSrc: "src/sw.ts",
@@ -97,13 +87,17 @@ export default defineConfig({
 					url: "/ffmpeg/ffmpeg-core.wasm",
 					revision: `core-${ffmpegCoreVersion}`,
 				},
+				{
+					url: "/qpdf.wasm",
+					revision: `qpdf-${qpdfWasmVersion}`,
+				},
 			],
 			injectionPoint: "self.__WB_MANIFEST",
 			rollupFormat: "iife",
 			devOptions: {
 				enabled: true,
 			},
-			maximumFileSizeToCacheInBytes: 50 * 1024 * 1024,
+			maximumFileSizeToCacheInBytes: 160 * 1024 * 1024,
 		}),
 	],
 

@@ -1,4 +1,10 @@
-import { readdirSync, writeFileSync, statSync, existsSync, readFileSync } from "node:fs"
+import {
+	readdirSync,
+	writeFileSync,
+	statSync,
+	existsSync,
+	readFileSync,
+} from "node:fs"
 import { join } from "node:path"
 import { execSync } from "node:child_process"
 
@@ -24,13 +30,19 @@ function getWebmFiles(dir: string): string[] {
 							const trimData = JSON.parse(readFileSync(trimPath, "utf-8"))
 							const part1 = join(dir, "part1.webm")
 							const part2 = join(dir, "part2.webm")
-							
+
 							// Split video losslessly using stored timestamps
-							execSync(`ffmpeg -y -i ${fullPath} -t ${trimData.cutStart} -c copy ${part1}`, { stdio: "ignore" })
-							execSync(`ffmpeg -y -i ${fullPath} -ss ${trimData.cutEnd} -c copy ${part2}`, { stdio: "ignore" })
-							
+							execSync(
+								`ffmpeg -y -i ${fullPath} -t ${trimData.cutStart} -c copy ${part1}`,
+								{ stdio: "ignore" },
+							)
+							execSync(
+								`ffmpeg -y -i ${fullPath} -ss ${trimData.cutEnd} -c copy ${part2}`,
+								{ stdio: "ignore" },
+							)
+
 							results.push(part1, part2)
-						} catch (err) {
+						} catch (_err) {
 							console.warn(`Trim failed for ${fullPath}, using full video`)
 							results.push(fullPath)
 						}
