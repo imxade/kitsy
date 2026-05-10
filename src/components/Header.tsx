@@ -41,27 +41,22 @@ export default function Header() {
 				{/* Nav */}
 				<div className="flex-1 flex justify-end items-center gap-1 sm:gap-4">
 					<SearchBox />
-					<div
-						className="tooltip tooltip-bottom tooltip-warning before:max-w-[200px] before:whitespace-normal"
-						data-tip="⚠️ For security, please disable all browser extensions for this site."
+					<button
+						type="button"
+						className={`btn btn-ghost btn-circle btn-sm ${iconColorClass}`}
+						onClick={() =>
+							void (cloud.connected ? cloud.disconnect() : cloud.connect())
+						}
+						disabled={cloud.connecting || !cloud.configured || !isOnline}
+						title={cloud.disabledReason ?? cloud.status}
+						aria-label={cloud.status}
 					>
-						<button
-							type="button"
-							className={`btn btn-ghost btn-circle btn-sm ${iconColorClass}`}
-							onClick={() =>
-								void (cloud.connected ? cloud.disconnect() : cloud.connect())
-							}
-							disabled={cloud.connecting || !cloud.configured || !isOnline}
-							title={cloud.disabledReason ?? cloud.status}
-							aria-label={cloud.status}
-						>
-							{cloud.connecting ? (
-								<span className="loading loading-spinner loading-xs" />
-							) : (
-								<Icon name={iconName} size={20} />
-							)}
-						</button>
-					</div>
+						{cloud.connecting ? (
+							<span className="loading loading-spinner loading-xs" />
+						) : (
+							<Icon name={iconName} size={20} />
+						)}
+					</button>
 					<a
 						href="http://github.com/imxade/Kitsy"
 						target="_blank"

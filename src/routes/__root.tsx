@@ -35,23 +35,6 @@ export const Route = createRootRoute({
 				content:
 					"Convert, edit, and process files locally in your browser with optional Google Drive sync and offline-ready PWA support.",
 			},
-			{
-				httpEquiv: "Content-Security-Policy",
-				content:
-					"default-src 'self'; " +
-					// allow inline (needed), but restrict everything else
-					"script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval'; " +
-					"style-src 'self' 'unsafe-inline'; " +
-					"connect-src 'self' https://oauth2.googleapis.com https://www.googleapis.com; " +
-					"img-src 'self' data: blob:; " +
-					"media-src 'self' data: blob:; " +
-					"worker-src 'self' blob:; " +
-					"frame-src 'self' blob:; " +
-					"child-src 'self' blob:; " +
-					"object-src 'none'; " +
-					"base-uri 'self'; " +
-					"frame-ancestors 'none';",
-			},
 		],
 		links: [{ rel: "manifest", href: "/manifest.json" }],
 	}),

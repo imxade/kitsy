@@ -4,6 +4,8 @@ dist
 dist-ssr
 *.local
 .env
+client_secret_*.json
+client_secret*.json
 .nitro
 .tanstack
 .wrangler
@@ -14,8 +16,9 @@ todo*
 fixtures
 samples
 public/ffmpeg
+public/libreoffice-wasm
+public/qpdf.wasm
 playwright-report/
 test-results/
 .codex
 .vercel
-
