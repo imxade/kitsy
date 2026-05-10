@@ -207,12 +207,6 @@ function EditableTodoCard({
 						: "border-base-content/10 bg-base-200/40"
 			}`}
 			data-testid={isDraft ? "todo-draft" : "todo-item"}
-			onMouseEnter={() => setIsExpanded(true)}
-			onMouseLeave={() => {
-				if (!isEditing && document.activeElement !== editorRef.current) {
-					setIsExpanded(false)
-				}
-			}}
 			onBlur={(event) => {
 				if (!event.currentTarget.contains(event.relatedTarget as Node)) {
 					setIsEditing(false)
@@ -239,71 +233,81 @@ function EditableTodoCard({
 				)}
 
 				<div className="min-w-0 flex-1">
-					{showEditor ? (
-						<div className="relative">
-							{/* biome-ignore lint/a11y/useSemanticElements: contenteditable is required so todo links can render inline outside edit mode without textarea link handling. */}
+					{/* biome-ignore lint/a11y/noStaticElementInteractions: hover expands the compact todo preview; editing and links stay keyboard-accessible inside. */}
+					<div
+						onMouseEnter={() => setIsExpanded(true)}
+						onMouseLeave={() => {
+							if (!isEditing && document.activeElement !== editorRef.current) {
+								setIsExpanded(false)
+							}
+						}}
+					>
+						{showEditor ? (
+							<div className="relative">
+								{/* biome-ignore lint/a11y/useSemanticElements: contenteditable is required so todo links can render inline outside edit mode without textarea link handling. */}
+								<div
+									ref={editorRef}
+									role="textbox"
+									tabIndex={0}
+									aria-label={isDraft ? "Draft todo text" : "Todo text"}
+									aria-multiline="true"
+									contentEditable
+									suppressContentEditableWarning
+									className={editableClassName}
+									data-testid={isDraft ? "todo-draft-input" : "todo-edit-input"}
+									onFocus={() => {
+										setIsExpanded(true)
+										setIsEditing(true)
+									}}
+									onInput={(event) =>
+										onTextChange(readEditableText(event.currentTarget))
+									}
+									onPaste={(event) => {
+										event.preventDefault()
+										const text = event.clipboardData.getData("text/plain")
+										insertPlainTextAtSelection(event.currentTarget, text)
+										onTextChange(readEditableText(event.currentTarget))
+									}}
+								/>
+								{item.text.length === 0 && (
+									<span className="pointer-events-none absolute left-0 top-0 text-sm leading-6 text-base-content/45">
+										{isDraft ? "Write a todo..." : "Empty todo deletes on blur"}
+									</span>
+								)}
+							</div>
+						) : (
+							// biome-ignore lint/a11y/useSemanticElements: the editable preview can contain anchors, so a native button would create invalid nested interactive content.
 							<div
-								ref={editorRef}
-								role="textbox"
+								role="button"
 								tabIndex={0}
-								aria-label={isDraft ? "Draft todo text" : "Todo text"}
-								aria-multiline="true"
-								contentEditable
-								suppressContentEditableWarning
-								className={editableClassName}
-								data-testid={isDraft ? "todo-draft-input" : "todo-edit-input"}
-								onFocus={() => {
-									setIsExpanded(true)
-									setIsEditing(true)
+								aria-label="Edit todo text"
+								className={`${editableClassName} cursor-text`}
+								onClick={(event) => {
+									const target = event.target as HTMLElement
+									if (target.closest("a")) return
+									startEditing(event.clientX, event.clientY)
 								}}
-								onInput={(event) =>
-									onTextChange(readEditableText(event.currentTarget))
-								}
-								onPaste={(event) => {
+								onKeyDown={(event) => {
+									if (
+										event.key !== "Enter" &&
+										event.key !== " " &&
+										event.key !== "F2"
+									)
+										return
 									event.preventDefault()
-									const text = event.clipboardData.getData("text/plain")
-									insertPlainTextAtSelection(event.currentTarget, text)
-									onTextChange(readEditableText(event.currentTarget))
+									startEditing()
 								}}
-							/>
-							{item.text.length === 0 && (
-								<span className="pointer-events-none absolute left-0 top-0 text-sm leading-6 text-base-content/45">
-									{isDraft ? "Write a todo..." : "Empty todo deletes on blur"}
-								</span>
-							)}
-						</div>
-					) : (
-						// biome-ignore lint/a11y/useSemanticElements: the editable preview can contain anchors, so a native button would create invalid nested interactive content.
-						<div
-							role="button"
-							tabIndex={0}
-							aria-label="Edit todo text"
-							className={`${editableClassName} cursor-text`}
-							onClick={(event) => {
-								const target = event.target as HTMLElement
-								if (target.closest("a")) return
-								startEditing(event.clientX, event.clientY)
-							}}
-							onKeyDown={(event) => {
-								if (
-									event.key !== "Enter" &&
-									event.key !== " " &&
-									event.key !== "F2"
-								)
-									return
-								event.preventDefault()
-								startEditing()
-							}}
-						>
-							{item.text.trim().length > 0 ? (
-								<TodoTextContent item={item} />
-							) : (
-								<span className="text-base-content/40">
-									Empty todo deletes on blur
-								</span>
-							)}
-						</div>
-					)}
+							>
+								{item.text.trim().length > 0 ? (
+									<TodoTextContent item={item} />
+								) : (
+									<span className="text-base-content/40">
+										Empty todo deletes on blur
+									</span>
+								)}
+							</div>
+						)}
+					</div>
 
 					<div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-base-content/45">
 						<input

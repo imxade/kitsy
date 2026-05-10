@@ -76,7 +76,9 @@ describe("TodoListPanel", () => {
 
 		expect(await screen.findByText("Imported task")).toBeTruthy()
 		await waitFor(() => {
-			expect(window.localStorage.getItem(TODO_STORAGE_KEY)).toContain("Imported task")
+			expect(window.localStorage.getItem(TODO_STORAGE_KEY)).toContain(
+				"Imported task",
+			)
 		})
 	})
 
