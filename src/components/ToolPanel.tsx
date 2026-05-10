@@ -1,7 +1,6 @@
 import { useState, useRef, useEffect } from "react"
 import * as docxPreview from "docx-preview"
-import { getPdfjsLib } from "../lib/pdfjs"
-import { PDFDocument } from "pdf-lib"
+import { getPdfjsLib, getPdfPageCount } from "../lib/pdfjs"
 import type { ToolDefinition } from "../lib/tool-registry"
 import type { ProcessedFile } from "../lib/image-processor"
 import { createZip } from "../lib/file-processor"
@@ -178,6 +177,25 @@ function RemoveButton({
 	)
 }
 
+function PreviewFrame({
+	children,
+	className = "",
+	containerRef,
+}: {
+	children: React.ReactNode
+	className?: string
+	containerRef?: React.Ref<HTMLDivElement>
+}) {
+	return (
+		<div
+			ref={containerRef}
+			className={`card card-border overflow-hidden ${className}`}
+		>
+			{children}
+		</div>
+	)
+}
+
 // -- Media Previews --
 
 function VideoPreview({
@@ -204,7 +222,7 @@ function VideoPreview({
 	if (!url) return null
 
 	return (
-		<div className="rounded-lg border border-base-content/10 overflow-hidden relative">
+		<PreviewFrame className="relative">
 			{onRemove && <RemoveButton onClick={onRemove} />}
 			<p className="text-xs font-semibold text-base-content/60 px-3 pt-2 truncate">
 				{file.name}
@@ -242,7 +260,7 @@ function VideoPreview({
 					</button>
 				)}
 			</div>
-		</div>
+		</PreviewFrame>
 	)
 }
 
@@ -270,7 +288,7 @@ function AudioPreview({
 	if (!url) return null
 
 	return (
-		<div className="rounded-lg border border-base-content/10 p-3 relative">
+		<PreviewFrame className="relative p-3">
 			{onRemove && <RemoveButton onClick={onRemove} />}
 			<p className="text-sm truncate mb-2 pr-6">{file.name}</p>
 			{/* biome-ignore lint/a11y/useMediaCaption: User file */}
@@ -306,7 +324,7 @@ function AudioPreview({
 					</button>
 				)}
 			</div>
-		</div>
+		</PreviewFrame>
 	)
 }
 
@@ -328,7 +346,7 @@ function ImagePreview({
 	if (!url) return null
 
 	return (
-		<div className="rounded-lg border border-base-content/10 overflow-hidden relative">
+		<PreviewFrame className="relative">
 			{onRemove && <RemoveButton onClick={onRemove} />}
 			<img
 				src={url}
@@ -338,7 +356,7 @@ function ImagePreview({
 			<p className="text-xs text-center text-base-content/50 py-1 truncate px-2">
 				{file.name}
 			</p>
-		</div>
+		</PreviewFrame>
 	)
 }
 
@@ -396,7 +414,7 @@ function PdfPagePreview({
 	}, [imgUrl])
 
 	return (
-		<div className="rounded-lg border border-base-content/10 overflow-hidden relative">
+		<PreviewFrame className="relative">
 			{onRemove && <RemoveButton onClick={onRemove} label="Remove page" />}
 			{imgUrl ? (
 				<img
@@ -412,7 +430,7 @@ function PdfPagePreview({
 			<p className="text-xs text-center text-base-content/50 py-1 truncate px-2">
 				{label || `Page ${pageNum}`}
 			</p>
-		</div>
+		</PreviewFrame>
 	)
 }
 
@@ -444,9 +462,7 @@ function PdfAllPagesPreview({
 	useEffect(() => {
 		;(async () => {
 			try {
-				const bytes = await file.arrayBuffer()
-				const doc = await PDFDocument.load(bytes, { ignoreEncryption: true })
-				const count = doc.getPageCount()
+				const count = await getPdfPageCount(file)
 				setPageCount(count)
 				setPageOrder(Array.from({ length: count }, (_, i) => i + 1))
 			} catch {
@@ -572,9 +588,9 @@ function VideoCropPreview({
 
 	return (
 		<div className="space-y-3">
-			<div
-				ref={containerRef}
-				className="relative rounded-lg border border-base-content/10 overflow-hidden select-none"
+			<PreviewFrame
+				containerRef={containerRef}
+				className="relative select-none"
 			>
 				{onRemove && <RemoveButton onClick={onRemove} />}
 				{/* biome-ignore lint/a11y/useMediaCaption: User file */}
@@ -613,7 +629,7 @@ function VideoCropPreview({
 						/>
 					</div>
 				)}
-			</div>
+			</PreviewFrame>
 			<p className="text-xs text-base-content/50 text-center">
 				Drag to reposition. Drag the bottom-right corner to resize.
 			</p>
@@ -677,9 +693,9 @@ function ImageCropPreview({
 
 	return (
 		<div className="space-y-3">
-			<div
-				ref={containerRef}
-				className="relative rounded-lg border border-base-content/10 overflow-hidden select-none"
+			<PreviewFrame
+				containerRef={containerRef}
+				className="relative select-none"
 			>
 				{onRemove && <RemoveButton onClick={onRemove} />}
 				<img
@@ -716,7 +732,7 @@ function ImageCropPreview({
 						/>
 					</div>
 				)}
-			</div>
+			</PreviewFrame>
 			<p className="text-xs text-base-content/50 text-center">
 				Drag to reposition. Drag the bottom-right corner to resize.
 			</p>
@@ -748,7 +764,7 @@ function ImageRotatePreview({
 		<div className="relative">
 			{onRemove && <RemoveButton onClick={onRemove} />}
 			<div className="grid gap-3 grid-cols-2">
-				<div className="rounded-lg border border-base-content/10 overflow-hidden">
+				<PreviewFrame>
 					<p className="text-xs text-center text-base-content/50 py-1">
 						Original
 					</p>
@@ -757,8 +773,8 @@ function ImageRotatePreview({
 						alt="Original"
 						className="w-full h-auto object-contain max-h-48"
 					/>
-				</div>
-				<div className="rounded-lg border border-primary/30 overflow-hidden">
+				</PreviewFrame>
+				<PreviewFrame className="border-primary/30">
 					<p className="text-xs text-center text-primary py-1">
 						After {angle} degree rotation
 					</p>
@@ -768,7 +784,7 @@ function ImageRotatePreview({
 						className="w-full h-auto object-contain max-h-48"
 						style={{ transform: `rotate(${angle}deg)` }}
 					/>
-				</div>
+				</PreviewFrame>
 			</div>
 		</div>
 	)
@@ -783,7 +799,7 @@ function TextPreview({ blob, name }: { blob: Blob; name: string }) {
 	}, [blob])
 	if (!text) return null
 	return (
-		<div className="rounded-lg border border-base-content/10 overflow-hidden">
+		<PreviewFrame>
 			<div className="bg-base-200/50 p-2 border-b border-base-content/10">
 				<span className="text-xs font-semibold px-2 text-base-content">
 					{name}
@@ -792,7 +808,7 @@ function TextPreview({ blob, name }: { blob: Blob; name: string }) {
 			<pre className="p-4 text-sm overflow-auto max-h-64 whitespace-pre-wrap">
 				{text}
 			</pre>
-		</div>
+		</PreviewFrame>
 	)
 }
 
@@ -837,7 +853,7 @@ function DocxPreview({ blob, name }: { blob: Blob; name: string }) {
 	}, [blob])
 
 	return (
-		<div className="rounded-lg overflow-hidden border border-base-content/10 bg-white">
+		<PreviewFrame className="bg-white">
 			<div className="bg-base-200/50 p-2 border-b border-base-content/10 flex items-center justify-between">
 				<span className="text-xs font-semibold px-2 text-base-content">
 					{name}
@@ -853,7 +869,7 @@ function DocxPreview({ blob, name }: { blob: Blob; name: string }) {
 				className="overflow-auto max-h-[600px] bg-white docx-no-pad"
 				style={{ minHeight: loading ? 0 : 200 }}
 			/>
-		</div>
+		</PreviewFrame>
 	)
 }
 
@@ -1430,20 +1446,20 @@ export default function ToolPanel({ tool, presetDefaults }: ToolPanelProps) {
 			{/* Results */}
 			{results && results.length > 0 && (
 				<div
-					className="card rounded-3xl border border-success/30 bg-base-100/90 shadow-sm"
+					className="card bg-base-100 border border-success/30 shadow-sm"
 					data-testid="result-card"
 				>
 					<div className={panelBodyClassName}>
-						<div className="flex items-center justify-between mb-3">
+						<div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-3">
 							<h4 className="font-semibold text-sm text-success flex items-center gap-2">
 								Results ({results.length}{" "}
 								{results.length === 1 ? "file" : "files"})
 							</h4>
-							<div className="flex flex-wrap items-center gap-2 justify-end">
+							<div className="flex flex-col sm:flex-row sm:flex-wrap items-stretch sm:items-center gap-2 sm:justify-end">
 								{results.length > 1 && (
 									<button
 										type="button"
-										className="btn btn-success btn-sm"
+										className="btn btn-success btn-sm w-full sm:w-auto"
 										onClick={downloadAll}
 									>
 										Download All (ZIP)
@@ -1452,7 +1468,7 @@ export default function ToolPanel({ tool, presetDefaults }: ToolPanelProps) {
 								{results.length > 1 && (
 									<button
 										type="button"
-										className="btn btn-outline btn-sm"
+										className="btn btn-outline btn-sm w-full sm:w-auto"
 										onClick={uploadAllToDrive}
 										disabled={
 											results.length === 0 ||
@@ -1474,7 +1490,7 @@ export default function ToolPanel({ tool, presetDefaults }: ToolPanelProps) {
 							{results.map((r, i) => (
 								<div
 									key={`${r.name}-${i}`}
-									className="flex items-center justify-between rounded-lg bg-base-200/50 px-4 py-3"
+									className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between rounded-box bg-base-200/50 px-4 py-3"
 								>
 									<div className="flex items-center gap-3 min-w-0">
 										<div className="min-w-0">
@@ -1487,7 +1503,7 @@ export default function ToolPanel({ tool, presetDefaults }: ToolPanelProps) {
 									<div className="flex items-center gap-2">
 										<button
 											type="button"
-											className="btn btn-outline btn-sm"
+											className="btn btn-outline btn-sm flex-1 sm:flex-none"
 											onClick={() => uploadToDrive(r)}
 											disabled={
 												activeUploads.includes(r.name) ||
@@ -1502,7 +1518,7 @@ export default function ToolPanel({ tool, presetDefaults }: ToolPanelProps) {
 										</button>
 										<button
 											type="button"
-											className="btn btn-primary btn-sm"
+											className="btn btn-primary btn-sm flex-1 sm:flex-none"
 											onClick={() => download(r)}
 										>
 											Download
@@ -1528,16 +1544,13 @@ export default function ToolPanel({ tool, presetDefaults }: ToolPanelProps) {
 									if (!r.blob.type.startsWith("image/")) return null
 									const u = URL.createObjectURL(r.blob)
 									return (
-										<div
-											key={`prev-${r.name}-${i}`}
-											className="rounded-lg overflow-hidden border border-base-content/10"
-										>
+										<PreviewFrame key={`prev-${r.name}-${i}`}>
 											<img
 												src={u}
 												alt={r.name}
 												className="w-full h-auto object-contain max-h-48"
 											/>
-										</div>
+										</PreviewFrame>
 									)
 								})}
 							</div>
@@ -1550,13 +1563,10 @@ export default function ToolPanel({ tool, presetDefaults }: ToolPanelProps) {
 									if (!r.blob.type.startsWith("video/")) return null
 									const u = URL.createObjectURL(r.blob)
 									return (
-										<div
-											key={`prev-vid-${r.name}-${i}`}
-											className="rounded-lg overflow-hidden border border-base-content/10"
-										>
+										<PreviewFrame key={`prev-vid-${r.name}-${i}`}>
 											{/* biome-ignore lint/a11y/useMediaCaption: Result preview */}
 											<video src={u} controls className="w-full max-h-64" />
-										</div>
+										</PreviewFrame>
 									)
 								})}
 							</div>
@@ -1569,13 +1579,13 @@ export default function ToolPanel({ tool, presetDefaults }: ToolPanelProps) {
 									if (!r.blob.type.startsWith("audio/")) return null
 									const u = URL.createObjectURL(r.blob)
 									return (
-										<div
+										<PreviewFrame
 											key={`prev-aud-${r.name}-${i}`}
-											className="rounded-lg border border-base-content/10 p-3"
+											className="p-3"
 										>
 											{/* biome-ignore lint/a11y/useMediaCaption: Result preview */}
 											<audio src={u} controls className="w-full" />
-										</div>
+										</PreviewFrame>
 									)
 								})}
 							</div>
@@ -1619,7 +1629,6 @@ export default function ToolPanel({ tool, presetDefaults }: ToolPanelProps) {
 						) && (
 							<div className="mt-4 flex flex-col gap-4" data-testid="preview">
 								{results.map((r, i) => {
-									// DOCX files → docx-preview rendering
 									if (r.name.endsWith(".docx")) {
 										return (
 											<DocxPreview
@@ -1640,9 +1649,9 @@ export default function ToolPanel({ tool, presetDefaults }: ToolPanelProps) {
 										return null
 									const u = URL.createObjectURL(r.blob)
 									return (
-										<div
+										<PreviewFrame
 											key={`prev-doc-${r.name}-${i}`}
-											className="rounded-lg overflow-hidden border border-base-content/10 bg-white"
+											className="bg-white"
 										>
 											<div className="bg-base-200/50 p-2 border-b border-base-content/10 flex items-center justify-between">
 												<span className="text-xs font-semibold px-2 text-base-content">
@@ -1665,7 +1674,7 @@ export default function ToolPanel({ tool, presetDefaults }: ToolPanelProps) {
 													? {}
 													: { sandbox: "allow-same-origin allow-scripts" })}
 											/>
-										</div>
+										</PreviewFrame>
 									)
 								})}
 							</div>

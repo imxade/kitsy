@@ -1,4 +1,5 @@
 import { describe, it, expect } from "vitest"
+import { readFileSync } from "node:fs"
 import {
 	getAllTools,
 	getToolById,
@@ -97,5 +98,24 @@ describe("tool-registry", () => {
 				expect(ext === "*" || ext.startsWith(".")).toBe(true)
 			}
 		}
+	})
+
+	it("all registered tools have showcase or focused processor coverage", () => {
+		const showcase = readFileSync("tests/e2e/showcase.spec.ts", "utf-8")
+		const showcaseToolIds = new Set(
+			[...showcase.matchAll(/\bid:\s*"([^"]+)"/g)].map((match) => match[1]),
+		)
+		const focusedProcessorCoverage = new Set([
+			"pdf-digital-sign",
+			"pdf-validate-signature",
+			"pdf-unlock",
+		])
+		const uncovered = getAllTools()
+			.map((tool) => tool.id)
+			.filter(
+				(id) => !showcaseToolIds.has(id) && !focusedProcessorCoverage.has(id),
+			)
+
+		expect(uncovered).toEqual([])
 	})
 })

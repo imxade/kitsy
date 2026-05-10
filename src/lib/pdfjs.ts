@@ -10,3 +10,15 @@ if (typeof window !== "undefined") {
 export async function getPdfjsLib() {
 	return pdfjsLib
 }
+
+export async function getPdfPageCount(file: File): Promise<number> {
+	const loadingTask = pdfjsLib.getDocument({
+		data: new Uint8Array(await file.arrayBuffer()),
+	})
+	const doc = await loadingTask.promise
+	try {
+		return doc.numPages
+	} finally {
+		await doc.destroy?.()
+	}
+}

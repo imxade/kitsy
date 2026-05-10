@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test"
+import { test, expect, type Locator } from "@playwright/test"
 import { join } from "node:path"
 import { downloadSamples, ASSETS_DIR } from "./download-samples"
 import { writeFileSync, mkdirSync } from "node:fs"
@@ -6,7 +6,7 @@ import { writeFileSync, mkdirSync } from "node:fs"
 // ── Download samples and warm up Vite once before all tests ──
 test.beforeAll(async ({ browser }) => {
 	await downloadSamples()
-	
+
 	// Warm up the dev server so initial load latency isn't included in recordings
 	console.log("[SETUP] Warming up dev server...")
 	const page = await browser.newPage()
@@ -17,7 +17,8 @@ test.beforeAll(async ({ browser }) => {
 })
 
 // ── Drop the SUCCESS manifest in the output directory if test passes ──
-test.afterEach(async ({}, testInfo) => {
+test.afterEach(async ({ page }, testInfo) => {
+	void page
 	if (testInfo.status === "passed" && testInfo.outputDir) {
 		mkdirSync(testInfo.outputDir, { recursive: true })
 		writeFileSync(join(testInfo.outputDir, "SUCCESS"), "ok")
@@ -53,26 +54,70 @@ const TOOL_TESTS: ToolTest[] = [
 	{ id: "image-blur", file: "image.jpg" },
 	{ id: "image-pixelate", file: "image.jpg" },
 	{ id: "image-watermark", file: "image.jpg" },
-	{ id: "image-collage", file: ["image.jpg", "image.png"], skipRun: true, customPanel: true },
+	{
+		id: "image-collage",
+		file: ["image.jpg", "image.png"],
+		skipRun: true,
+		customPanel: true,
+	},
 
 	// ── PDF ──
 	{ id: "pdf-merge", file: ["document.pdf", "document2.pdf"] },
 	{ id: "pdf-split", file: "document.pdf" },
 	{ id: "pdf-delete-pages", file: "document.pdf" },
 	{ id: "pdf-reorder", file: "document.pdf" },
+	{ id: "pdf-header-footer", file: "document.pdf" },
+	{ id: "pdf-bates-numbering", file: ["document.pdf", "document2.pdf"] },
+	{ id: "pdf-add-blank-pages", file: "document.pdf" },
+	{ id: "pdf-remove-blank-pages", file: "document.pdf" },
+	{ id: "pdf-crop-pages", file: "document.pdf" },
+	{
+		id: "pdf-overlay-pages",
+		file: "document.pdf",
+		options: { overlay: "document2.pdf" },
+	},
+	{ id: "pdf-resize-pages", file: "document.pdf" },
+	{ id: "pdf-n-up", file: "document.pdf" },
+	{ id: "pdf-page-dimensions", file: "document.pdf" },
 	{ id: "pdf-images-to-pdf", file: "image.jpg" },
-	{ id: "pdf-to-text", file: "document.pdf" },
 	{ id: "pdf-to-images", file: "document.pdf", timeout: 420_000 },
 	{ id: "pdf-compress", file: "document.pdf" },
 	{ id: "pdf-watermark", file: "document.pdf" },
 	{ id: "pdf-rotate", file: "document.pdf" },
+	{ id: "pdf-flatten", file: "document.pdf" },
+	{
+		id: "pdf-metadata",
+		file: "document.pdf",
+		options: {
+			title: "Kitsy E2E",
+			author: "Kitsy",
+			subject: "Showcase",
+			keywords: "kitsy,e2e",
+		},
+	},
+	{ id: "pdf-strip-metadata", file: "document.pdf" },
+	{ id: "pdf-remove-annotations", file: "document.pdf" },
+	{ id: "pdf-sign-visual", file: "document.pdf" },
+	{
+		id: "pdf-lock",
+		file: "document.pdf",
+		options: { userPassword: "kitsy-e2e", ownerPassword: "kitsy-e2e" },
+	},
 
 	// ── Video (FFmpeg, longer timeouts) ──
 	{ id: "video-convert", file: "video.mp4" },
-	{ id: "video-trim", file: "video.mp4", options: { start: "00:00:00", end: "00:00:02" } },
+	{
+		id: "video-trim",
+		file: "video.mp4",
+		options: { start: "00:00:00", end: "00:00:02" },
+	},
 	{ id: "video-extract-audio", file: "video.mp4" },
 	{ id: "video-merge", file: ["video.mp4", "video2.mp4"] },
-	{ id: "video-audio-merge", file: "video.mp4", options: { audioFile: "audio.mp3" } },
+	{
+		id: "video-audio-merge",
+		file: "video.mp4",
+		options: { audioFile: "audio.mp3" },
+	},
 	{ id: "video-mute", file: "video.mp4" },
 	{ id: "video-speed", file: "video.mp4" },
 	{ id: "video-resize", file: "video.mp4" },
@@ -82,13 +127,35 @@ const TOOL_TESTS: ToolTest[] = [
 
 	// ── Audio (FFmpeg, longer timeouts) ──
 	{ id: "audio-convert", file: "audio.mp3" },
-	{ id: "audio-trim", file: "audio.mp3", options: { start: "00:00:00", end: "00:00:05" } },
+	{
+		id: "audio-trim",
+		file: "audio.mp3",
+		options: { start: "00:00:00", end: "00:00:05" },
+	},
 	{ id: "audio-merge", file: ["audio.mp3", "audio2.mp3"] },
 	{ id: "audio-volume", file: "audio.mp3" },
 	{ id: "audio-fade", file: "audio.mp3" },
-	{ id: "screen-recorder", file: "", skipUpload: true, skipRun: true, customPanel: true },
-	{ id: "camera-recorder", file: "", skipUpload: true, skipRun: true, customPanel: true },
-	{ id: "audio-recorder", file: "", skipUpload: true, skipRun: true, customPanel: true },
+	{
+		id: "screen-recorder",
+		file: "",
+		skipUpload: true,
+		skipRun: true,
+		customPanel: true,
+	},
+	{
+		id: "camera-recorder",
+		file: "",
+		skipUpload: true,
+		skipRun: true,
+		customPanel: true,
+	},
+	{
+		id: "audio-recorder",
+		file: "",
+		skipUpload: true,
+		skipRun: true,
+		customPanel: true,
+	},
 
 	// ── Document ──
 	{ id: "document-viewer", file: "document.pdf", skipRun: true },
@@ -101,7 +168,14 @@ const TOOL_TESTS: ToolTest[] = [
 	{ id: "data-csv-to-json", file: "sample.csv" },
 	{ id: "data-json-to-csv", file: "sample.json" },
 	{ id: "data-format-json", file: "sample.json" },
-	{ id: "todo-list", file: "", skipUpload: true, skipRun: true, customPanel: true, interaction: "todo" },
+	{
+		id: "todo-list",
+		file: "",
+		skipUpload: true,
+		skipRun: true,
+		customPanel: true,
+		interaction: "todo",
+	},
 ]
 
 // ── Helpers ──
@@ -116,9 +190,10 @@ function elapsed(start: number): string {
 }
 
 /** Smooth scroll to element over `durationMs` with cubic ease-in-out */
-async function smoothScrollTo(locator: import("@playwright/test").Locator, durationMs = 2000) {
+async function smoothScrollTo(locator: Locator, durationMs = 2000) {
 	await locator.evaluate(async (el, dur) => {
-		const targetY = el.getBoundingClientRect().top + window.scrollY - window.innerHeight / 2
+		const targetY =
+			el.getBoundingClientRect().top + window.scrollY - window.innerHeight / 2
 		const startY = window.scrollY
 		const distance = targetY - startY
 		const start = performance.now()
@@ -126,7 +201,10 @@ async function smoothScrollTo(locator: import("@playwright/test").Locator, durat
 		return new Promise<void>((resolve) => {
 			function step(timestamp: number) {
 				const progress = Math.min((timestamp - start) / dur, 1)
-				const ease = progress < 0.5 ? 4 * progress * progress * progress : 1 - Math.pow(-2 * progress + 2, 3) / 2
+				const ease =
+					progress < 0.5
+						? 4 * progress * progress * progress
+						: 1 - (-2 * progress + 2) ** 3 / 2
 				window.scrollTo(0, startY + distance * ease)
 				if (progress < 1) {
 					requestAnimationFrame(step)
@@ -274,10 +352,12 @@ test.beforeEach(async ({ page }) => {
 
 		Object.defineProperty(HTMLMediaElement.prototype, "srcObject", {
 			get() {
-				return (this as HTMLMediaElement & { __srcObject?: unknown }).__srcObject
+				return (this as HTMLMediaElement & { __srcObject?: unknown })
+					.__srcObject
 			},
 			set(value) {
-				;(this as HTMLMediaElement & { __srcObject?: unknown }).__srcObject = value
+				;(this as HTMLMediaElement & { __srcObject?: unknown }).__srcObject =
+					value
 			},
 			configurable: true,
 		})
@@ -301,7 +381,10 @@ test.beforeEach(async ({ page }) => {
 
 		Object.defineProperty(navigator, "mediaDevices", {
 			value: {
-				getUserMedia: async (constraints: { video?: boolean; audio?: boolean }) =>
+				getUserMedia: async (constraints: {
+					video?: boolean
+					audio?: boolean
+				}) =>
 					new MockMediaStream([
 						...(constraints.video ? [new MockMediaStreamTrack("video")] : []),
 						...(constraints.audio ? [new MockMediaStreamTrack("audio")] : []),
@@ -345,27 +428,40 @@ test.describe("Tool Showcase", () => {
 			}, toolTest.id)
 
 			if (!toolTest.skipUpload) {
-				await page.waitForSelector('[data-testid="file-input"]', { state: "attached" })
+				await page.waitForSelector('[data-testid="file-input"]', {
+					state: "attached",
+				})
 
 				// 2. Upload file(s). Retry with CPU-friendly pacing to survive slow CI hydration.
 				const filePaths = getFilePaths(toolTest.file)
 				const fileInput = page.locator('[data-testid="file-input"]')
 
 				for (let attempt = 0; attempt < 15; attempt++) {
-					await fileInput.evaluate((el: HTMLInputElement) => { el.value = "" })
+					await fileInput.evaluate((el: HTMLInputElement) => {
+						el.value = ""
+					})
 					await fileInput.setInputFiles(filePaths)
 
 					try {
 						if (toolTest.customPanel) {
-							await expect(page.locator('[data-testid="file-input"]')).not.toBeVisible({ timeout: 500 })
+							await expect(
+								page.locator('[data-testid="file-input"]'),
+							).not.toBeVisible({ timeout: 500 })
 						} else if (!toolTest.skipRun) {
-							await expect(page.locator('[data-testid="run-button"]')).toBeVisible({ timeout: 500 })
+							await expect(
+								page.locator('[data-testid="run-button"]'),
+							).toBeVisible({ timeout: 500 })
 						} else {
-							await expect(page.locator('[data-testid="result-card"]')).toBeVisible({ timeout: 500 })
+							await expect(
+								page.locator('[data-testid="result-card"]'),
+							).toBeVisible({ timeout: 500 })
 						}
 						break
 					} catch {
-						if (attempt === 14) throw new Error(`Upload failed after 15 attempts for ${toolTest.id}`)
+						if (attempt === 14)
+							throw new Error(
+								`Upload failed after 15 attempts for ${toolTest.id}`,
+							)
 						await page.waitForTimeout(500)
 					}
 				}
@@ -395,12 +491,16 @@ test.describe("Tool Showcase", () => {
 					state: "attached",
 				})
 				const recorderToggle = page.locator('[data-testid="recorder-toggle"]')
-				await recorderToggle.evaluate((button: HTMLButtonElement) => button.click())
+				await recorderToggle.evaluate((button: HTMLButtonElement) =>
+					button.click(),
+				)
 				await expect(recorderToggle).toHaveText("Stop Recording", {
 					timeout: 15_000,
 				})
 				await page.waitForTimeout(500)
-				await recorderToggle.evaluate((button: HTMLButtonElement) => button.click())
+				await recorderToggle.evaluate((button: HTMLButtonElement) =>
+					button.click(),
+				)
 			}
 
 			if (toolTest.interaction === "todo") {
@@ -425,7 +525,9 @@ test.describe("Tool Showcase", () => {
 						},
 					]),
 				)
-				await page.locator('[data-testid="todo-import"]').setInputFiles(importPath)
+				await page
+					.locator('[data-testid="todo-import"]')
+					.setInputFiles(importPath)
 				await expect(page.locator('[data-testid="todo-item"]')).toHaveCount(2)
 			}
 
@@ -438,7 +540,7 @@ test.describe("Tool Showcase", () => {
 				await smoothScrollTo(runButton)
 				await page.waitForTimeout(1000)
 				await runButton.click()
-				
+
 				// Allow exactly 2s of "Processing..." UI to be included
 				await page.waitForTimeout(2000)
 				cutStartSecs = (Date.now() - testStart) / 1000
@@ -454,7 +556,10 @@ test.describe("Tool Showcase", () => {
 					})
 					cutEndSecs = (Date.now() - testStart) / 1000
 				} catch (e) {
-					await page.screenshot({ path: "failure-screenshot.png", fullPage: true })
+					await page.screenshot({
+						path: "failure-screenshot.png",
+						fullPage: true,
+					})
 					throw e
 				}
 
@@ -477,7 +582,11 @@ test.describe("Tool Showcase", () => {
 			}
 
 			// Save trim markers if we captured a processing wait period > 1s
-			if (cutStartSecs > 0 && cutEndSecs > cutStartSecs + 1 && testInfo.outputDir) {
+			if (
+				cutStartSecs > 0 &&
+				cutEndSecs > cutStartSecs + 1 &&
+				testInfo.outputDir
+			) {
 				mkdirSync(testInfo.outputDir, { recursive: true })
 				writeFileSync(
 					join(testInfo.outputDir, "trim.json"),

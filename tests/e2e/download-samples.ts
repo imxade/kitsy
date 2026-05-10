@@ -72,14 +72,27 @@ export async function downloadSamples(): Promise<void> {
 	}
 
 	// Create duplicate files for testing merge tools
-	writeFileSync(join(ASSETS_DIR, "document2.pdf"), Buffer.from(readFileSync(join(ASSETS_DIR, "document.pdf"))))
-	writeFileSync(join(ASSETS_DIR, "video2.mp4"), Buffer.from(readFileSync(join(ASSETS_DIR, "video.mp4"))))
-	writeFileSync(join(ASSETS_DIR, "audio2.mp3"), Buffer.from(readFileSync(join(ASSETS_DIR, "audio.mp3"))))
+	writeFileSync(
+		join(ASSETS_DIR, "document2.pdf"),
+		Buffer.from(readFileSync(join(ASSETS_DIR, "document.pdf"))),
+	)
+	writeFileSync(
+		join(ASSETS_DIR, "video2.mp4"),
+		Buffer.from(readFileSync(join(ASSETS_DIR, "video.mp4"))),
+	)
+	writeFileSync(
+		join(ASSETS_DIR, "audio2.mp3"),
+		Buffer.from(readFileSync(join(ASSETS_DIR, "audio.mp3"))),
+	)
+	writeFileSync(
+		join(ASSETS_DIR, "sample.rtf"),
+		String.raw`{\rtf1\ansi\deff0{\fonttbl{\f0 Arial;}}\f0\fs24 Kitsy offline document conversion sample.\par}`,
+	)
 
 	console.log("[DONE] All sample assets ready")
 }
 
-// Allow running directly: npx tsx tests/e2e/download-samples.ts
+// Allow running directly: node --experimental-strip-types tests/e2e/download-samples.ts
 if (process.argv[1]?.endsWith("download-samples.ts")) {
 	downloadSamples()
 }

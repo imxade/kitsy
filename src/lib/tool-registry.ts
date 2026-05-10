@@ -3,8 +3,8 @@
 
 import ExcelJS from "exceljs"
 import Papa from "papaparse"
-import { PDFDocument } from "pdf-lib"
 import type { ProcessedFile } from "./image-processor"
+import { getPdfPageCount } from "./pdfjs"
 import {
 	convertImage,
 	resizeImage,
@@ -20,15 +20,29 @@ import {
 	splitPdf,
 	deletePdfPages,
 	reorderPdfPages,
+	addPdfHeaderFooter,
+	addBatesNumbers,
+	addBlankPdfPages,
+	removeBlankPdfPages,
+	cropPdfPages,
+	overlayPdfPages,
+	resizePdfPages,
+	nUpPdf,
+	pdfPageDimensions,
+	signPdfVisually,
+	lockPdf,
+	unlockPdf,
+	digitallySignPdf,
+	validatePdfSignatures,
 	imagesToPdf,
-	pdfToText,
 	pdfToImages,
 	compressPdf,
 	addPdfWatermark,
 	rotatePdf,
-	addPageNumbers,
 	flattenPdf,
 	editPdfMetadata,
+	stripPdfMetadata,
+	removePdfAnnotations,
 } from "./pdf-processor"
 import {
 	createZip,
@@ -404,9 +418,7 @@ const tools: ToolDefinition[] = [
 		options: [],
 		process: async (files, opts) => {
 			if (!opts.order) {
-				const bytes = await files[0].arrayBuffer()
-				const doc = await PDFDocument.load(bytes)
-				const count = doc.getPageCount()
+				const count = await getPdfPageCount(files[0])
 				const docOrder = Array.from({ length: count }, (_, i) => i + 1)
 				// Returning the same PDF structurally, no reorder actually applied
 				return [await reorderPdfPages(files[0], docOrder)]
@@ -415,6 +427,640 @@ const tools: ToolDefinition[] = [
 			const order = orderStr.split(",").map((s) => Number(s.trim()))
 			return [await reorderPdfPages(files[0], order)]
 		},
+	},
+	{
+		id: "pdf-header-footer",
+		name: "Add PDF Header & Footer",
+		description: "Add page-aware header and footer text to selected pages",
+		category: "pdf",
+		icon: "text",
+		acceptedExtensions: [".pdf"],
+		keywords: ["header", "footer", "stamp text", "page total"],
+		multiple: true,
+		options: [
+			{ id: "headerLeft", label: "Header Left", type: "text", default: "" },
+			{
+				id: "headerCenter",
+				label: "Header Center",
+				type: "text",
+				default: "",
+			},
+			{ id: "headerRight", label: "Header Right", type: "text", default: "" },
+			{ id: "footerLeft", label: "Footer Left", type: "text", default: "" },
+			{
+				id: "footerCenter",
+				label: "Footer Center",
+				type: "text",
+				default: "Page {page} of {total}",
+			},
+			{ id: "footerRight", label: "Footer Right", type: "text", default: "" },
+			{ id: "pageRange", label: "Pages", type: "text", default: "all" },
+			{
+				id: "fontSize",
+				label: "Font Size",
+				type: "number",
+				default: 10,
+				min: 6,
+				max: 72,
+			},
+			{ id: "color", label: "Color", type: "text", default: "#000000" },
+		],
+		process: async (files, opts) =>
+			batch(files, (f) =>
+				addPdfHeaderFooter(
+					f,
+					String(opts.headerLeft || ""),
+					String(opts.headerCenter || ""),
+					String(opts.headerRight || ""),
+					String(opts.footerLeft || ""),
+					String(opts.footerCenter || ""),
+					String(opts.footerRight || ""),
+					String(opts.pageRange || "all"),
+					Number(opts.fontSize),
+					String(opts.color || "#000000"),
+				),
+			),
+	},
+	{
+		id: "pdf-bates-numbering",
+		name: "Bates Number PDF",
+		description: "Apply sequential Bates labels across one or more PDFs",
+		category: "pdf",
+		icon: "text",
+		acceptedExtensions: [".pdf"],
+		keywords: ["bates", "exhibit", "legal numbering", "stamp numbers"],
+		multiple: true,
+		options: [
+			{
+				id: "template",
+				label: "Template",
+				type: "text",
+				default: "[BATES]",
+			},
+			{
+				id: "startNumber",
+				label: "Start Number",
+				type: "number",
+				default: 1,
+				min: 0,
+			},
+			{
+				id: "fileStart",
+				label: "File Start",
+				type: "number",
+				default: 1,
+				min: 0,
+			},
+			{
+				id: "padding",
+				label: "Zero Padding",
+				type: "number",
+				default: 6,
+				min: 0,
+				max: 12,
+			},
+			{
+				id: "position",
+				label: "Position",
+				type: "select",
+				options: [
+					{ label: "Bottom Center", value: "bottom-center" },
+					{ label: "Bottom Left", value: "bottom-left" },
+					{ label: "Bottom Right", value: "bottom-right" },
+					{ label: "Top Center", value: "top-center" },
+					{ label: "Top Left", value: "top-left" },
+					{ label: "Top Right", value: "top-right" },
+				],
+				default: "bottom-center",
+			},
+			{
+				id: "fontSize",
+				label: "Font Size",
+				type: "number",
+				default: 10,
+				min: 6,
+				max: 72,
+			},
+			{ id: "color", label: "Color", type: "text", default: "#000000" },
+		],
+		process: async (files, opts) =>
+			addBatesNumbers(
+				files,
+				String(opts.template || "[BATES]"),
+				Number(opts.startNumber),
+				Number(opts.fileStart),
+				Number(opts.padding),
+				String(opts.position || "bottom-center"),
+				Number(opts.fontSize),
+				String(opts.color || "#000000"),
+			),
+	},
+	{
+		id: "pdf-add-blank-pages",
+		name: "Add Blank PDF Pages",
+		description: "Insert blank pages at the start or end of a PDF",
+		category: "pdf",
+		icon: "plus",
+		acceptedExtensions: [".pdf"],
+		keywords: ["insert blank page", "add empty page", "blank page"],
+		multiple: true,
+		options: [
+			{
+				id: "position",
+				label: "Position",
+				type: "select",
+				options: [
+					{ label: "End", value: "end" },
+					{ label: "Start", value: "start" },
+				],
+				default: "end",
+			},
+			{
+				id: "count",
+				label: "Page Count",
+				type: "number",
+				default: 1,
+				min: 1,
+				max: 50,
+			},
+			{
+				id: "size",
+				label: "Page Size",
+				type: "select",
+				options: [
+					{ label: "Match First Page", value: "match" },
+					{ label: "Letter", value: "letter" },
+					{ label: "A4", value: "a4" },
+					{ label: "Custom", value: "custom" },
+				],
+				default: "match",
+			},
+			{
+				id: "width",
+				label: "Custom Width (pt)",
+				type: "number",
+				default: 612,
+				min: 1,
+				max: 5000,
+				isVisible: (opts) => opts.size === "custom",
+			},
+			{
+				id: "height",
+				label: "Custom Height (pt)",
+				type: "number",
+				default: 792,
+				min: 1,
+				max: 5000,
+				isVisible: (opts) => opts.size === "custom",
+			},
+		],
+		process: async (files, opts) =>
+			batch(files, (f) =>
+				addBlankPdfPages(
+					f,
+					String(opts.position),
+					Number(opts.count),
+					String(opts.size),
+					Number(opts.width),
+					Number(opts.height),
+				),
+			),
+	},
+	{
+		id: "pdf-remove-blank-pages",
+		name: "Remove Blank PDF Pages",
+		description: "Remove structurally blank pages from a PDF",
+		category: "pdf",
+		icon: "trash",
+		acceptedExtensions: [".pdf"],
+		keywords: ["blank pages", "empty pages", "clean pdf"],
+		multiple: true,
+		options: [],
+		process: async (files) => batch(files, (f) => removeBlankPdfPages(f)),
+	},
+	{
+		id: "pdf-crop-pages",
+		name: "Crop PDF Pages",
+		description: "Crop every page by point margins without rasterizing the PDF",
+		category: "pdf",
+		icon: "crop",
+		acceptedExtensions: [".pdf"],
+		keywords: ["crop margins", "trim pdf", "page boxes"],
+		multiple: true,
+		options: [
+			{
+				id: "left",
+				label: "Left Margin (pt)",
+				type: "number",
+				default: 18,
+				min: 0,
+				max: 2000,
+			},
+			{
+				id: "right",
+				label: "Right Margin (pt)",
+				type: "number",
+				default: 18,
+				min: 0,
+				max: 2000,
+			},
+			{
+				id: "top",
+				label: "Top Margin (pt)",
+				type: "number",
+				default: 18,
+				min: 0,
+				max: 2000,
+			},
+			{
+				id: "bottom",
+				label: "Bottom Margin (pt)",
+				type: "number",
+				default: 18,
+				min: 0,
+				max: 2000,
+			},
+		],
+		process: async (files, opts) =>
+			batch(files, (f) =>
+				cropPdfPages(
+					f,
+					Number(opts.left),
+					Number(opts.right),
+					Number(opts.top),
+					Number(opts.bottom),
+				),
+			),
+	},
+	{
+		id: "pdf-overlay-pages",
+		name: "Overlay PDF Pages",
+		description: "Place another PDF page over every page of the base PDF",
+		category: "pdf",
+		icon: "files",
+		acceptedExtensions: [".pdf"],
+		keywords: ["overlay", "underlay", "letterhead", "background pdf"],
+		multiple: true,
+		options: [
+			{
+				id: "overlay",
+				label: "Overlay PDF",
+				type: "file",
+				accept: ".pdf,application/pdf",
+			},
+			{
+				id: "opacity",
+				label: "Opacity",
+				type: "number",
+				default: 1,
+				min: 0,
+				max: 1,
+				step: 0.05,
+			},
+		],
+		process: async (files, opts) => {
+			const overlay = opts.overlay
+			if (!(overlay instanceof File)) {
+				throw new Error("Please choose an overlay PDF")
+			}
+			return batch(files, (f) =>
+				overlayPdfPages(f, overlay, Number(opts.opacity)),
+			)
+		},
+	},
+	{
+		id: "pdf-resize-pages",
+		name: "Resize PDF Pages",
+		description: "Change PDF page size with optional content scaling",
+		category: "pdf",
+		icon: "maximize",
+		acceptedExtensions: [".pdf"],
+		keywords: ["page size", "scale pages", "fit to size"],
+		multiple: true,
+		options: [
+			{
+				id: "size",
+				label: "Page Size",
+				type: "select",
+				options: [
+					{ label: "Letter", value: "letter" },
+					{ label: "A4", value: "a4" },
+					{ label: "Custom", value: "custom" },
+				],
+				default: "letter",
+			},
+			{
+				id: "width",
+				label: "Custom Width (pt)",
+				type: "number",
+				default: 612,
+				min: 1,
+				max: 5000,
+				isVisible: (opts) => opts.size === "custom",
+			},
+			{
+				id: "height",
+				label: "Custom Height (pt)",
+				type: "number",
+				default: 792,
+				min: 1,
+				max: 5000,
+				isVisible: (opts) => opts.size === "custom",
+			},
+			{
+				id: "scaleContent",
+				label: "Scale Content",
+				type: "checkbox",
+				default: true,
+			},
+		],
+		process: async (files, opts) =>
+			batch(files, (f) =>
+				resizePdfPages(
+					f,
+					String(opts.size),
+					Number(opts.width),
+					Number(opts.height),
+					Boolean(opts.scaleContent),
+				),
+			),
+	},
+	{
+		id: "pdf-n-up",
+		name: "N-up PDF",
+		description: "Place multiple PDF pages onto each output sheet",
+		category: "pdf",
+		icon: "grid",
+		acceptedExtensions: [".pdf"],
+		keywords: ["multiple pages per sheet", "handout", "layout"],
+		multiple: true,
+		options: [
+			{
+				id: "pagesPerSheet",
+				label: "Pages Per Sheet",
+				type: "select",
+				options: [
+					{ label: "2", value: "2" },
+					{ label: "4", value: "4" },
+					{ label: "6", value: "6" },
+					{ label: "8", value: "8" },
+				],
+				default: "4",
+			},
+			{
+				id: "margin",
+				label: "Margin (pt)",
+				type: "number",
+				default: 18,
+				min: 0,
+				max: 200,
+			},
+			{
+				id: "gutter",
+				label: "Gutter (pt)",
+				type: "number",
+				default: 12,
+				min: 0,
+				max: 200,
+			},
+		],
+		process: async (files, opts) =>
+			batch(files, (f) =>
+				nUpPdf(
+					f,
+					Number(opts.pagesPerSheet),
+					Number(opts.margin),
+					Number(opts.gutter),
+				),
+			),
+	},
+	{
+		id: "pdf-page-dimensions",
+		name: "PDF Page Dimensions",
+		description: "Export page sizes, dimensions, and rotations as a CSV report",
+		category: "pdf",
+		icon: "table",
+		acceptedExtensions: [".pdf"],
+		producedExtensions: [".csv"],
+		keywords: ["page size", "dimensions", "pdf info", "width", "height"],
+		multiple: true,
+		options: [],
+		process: async (files) => batch(files, (f) => pdfPageDimensions(f)),
+	},
+	{
+		id: "pdf-sign-visual",
+		name: "Sign PDF",
+		description:
+			"Add a visible text or image signature stamp without creating a cryptographic certificate signature",
+		category: "pdf",
+		icon: "text",
+		acceptedExtensions: [".pdf"],
+		keywords: ["sign", "signature", "stamp", "visible signature"],
+		multiple: true,
+		options: [
+			{
+				id: "signatureText",
+				label: "Signature Text",
+				type: "text",
+				default: "Signed",
+			},
+			{
+				id: "signatureImage",
+				label: "Signature Image",
+				type: "file",
+				accept: ".png,.jpg,.jpeg,image/png,image/jpeg",
+			},
+			{
+				id: "pageNumber",
+				label: "Page",
+				type: "number",
+				default: 1,
+				min: 1,
+				step: 1,
+			},
+			{
+				id: "x",
+				label: "X Position (pt)",
+				type: "number",
+				default: 72,
+				min: 0,
+				step: 1,
+			},
+			{
+				id: "y",
+				label: "Y Position (pt)",
+				type: "number",
+				default: 72,
+				min: 0,
+				step: 1,
+			},
+			{
+				id: "width",
+				label: "Image Width (pt)",
+				type: "number",
+				default: 180,
+				min: 24,
+				step: 1,
+			},
+			{
+				id: "fontSize",
+				label: "Text Size",
+				type: "number",
+				default: 24,
+				min: 6,
+				max: 96,
+				step: 1,
+			},
+		],
+		process: async (files, opts) =>
+			batch(files, (f) =>
+				signPdfVisually(
+					f,
+					String(opts.signatureText ?? ""),
+					opts.signatureImage instanceof File ? opts.signatureImage : undefined,
+					Number(opts.pageNumber),
+					Number(opts.x),
+					Number(opts.y),
+					Number(opts.width),
+					Number(opts.fontSize),
+				),
+			),
+	},
+	{
+		id: "pdf-digital-sign",
+		name: "Digital Signature",
+		description:
+			"Apply a certificate-based PDF signature using a PFX/P12 certificate",
+		category: "pdf",
+		icon: "check",
+		acceptedExtensions: [".pdf"],
+		keywords: ["digital signature", "certificate", "pfx", "p12", "sign"],
+		multiple: true,
+		options: [
+			{
+				id: "certificateFile",
+				label: "Certificate File",
+				type: "file",
+				accept: ".pfx,.p12,application/x-pkcs12",
+			},
+			{
+				id: "password",
+				label: "Certificate Password",
+				type: "text",
+				default: "",
+			},
+			{
+				id: "reason",
+				label: "Reason",
+				type: "text",
+				default: "Approved",
+			},
+			{
+				id: "location",
+				label: "Location",
+				type: "text",
+				default: "",
+			},
+		],
+		process: async (files, opts) =>
+			batch(files, (f) =>
+				digitallySignPdf(
+					f,
+					opts.certificateFile instanceof File
+						? opts.certificateFile
+						: undefined,
+					String(opts.password ?? ""),
+					String(opts.reason ?? ""),
+					String(opts.location ?? ""),
+				),
+			),
+	},
+	{
+		id: "pdf-validate-signature",
+		name: "Validate Signature",
+		description:
+			"Inspect PDF certificate signatures and export a validation report",
+		category: "pdf",
+		icon: "check",
+		acceptedExtensions: [".pdf"],
+		producedExtensions: [".json"],
+		keywords: [
+			"validate signature",
+			"verify signature",
+			"digital signature",
+			"certificate",
+			"signed pdf",
+		],
+		multiple: true,
+		options: [
+			{
+				id: "trustedCertificateFile",
+				label: "Trusted Certificate",
+				type: "file",
+				accept: ".cer,.crt,.pem,application/pkix-cert",
+			},
+		],
+		process: async (files, opts) =>
+			batch(files, (f) =>
+				validatePdfSignatures(
+					f,
+					opts.trustedCertificateFile instanceof File
+						? opts.trustedCertificateFile
+						: undefined,
+				),
+			),
+	},
+	{
+		id: "pdf-lock",
+		name: "Lock PDF",
+		description: "Encrypt a PDF with password protection",
+		category: "pdf",
+		icon: "download-off",
+		acceptedExtensions: [".pdf"],
+		keywords: ["lock", "encrypt", "password", "protect pdf"],
+		multiple: true,
+		options: [
+			{
+				id: "userPassword",
+				label: "Open Password",
+				type: "text",
+				default: "",
+			},
+			{
+				id: "ownerPassword",
+				label: "Permissions Password",
+				type: "text",
+				default: "",
+			},
+		],
+		process: async (files, opts) =>
+			batch(files, (f) =>
+				lockPdf(
+					f,
+					String(opts.userPassword ?? ""),
+					String(opts.ownerPassword ?? ""),
+				),
+			),
+	},
+	{
+		id: "pdf-unlock",
+		name: "Unlock PDF",
+		description: "Decrypt a password-protected PDF when you know the password",
+		category: "pdf",
+		icon: "download",
+		acceptedExtensions: [".pdf"],
+		keywords: ["unlock", "decrypt", "remove password", "unprotect pdf"],
+		multiple: true,
+		options: [
+			{
+				id: "password",
+				label: "Password",
+				type: "text",
+				default: "",
+			},
+		],
+		process: async (files, opts) =>
+			batch(files, (f) => unlockPdf(f, String(opts.password ?? ""))),
 	},
 	{
 		id: "pdf-images-to-pdf",
@@ -435,18 +1081,6 @@ const tools: ToolDefinition[] = [
 		options: [],
 		process: async (files) => [await imagesToPdf(files)],
 	},
-	{
-		id: "pdf-to-text",
-		name: "PDF to Text",
-		description: "Extract text content from a PDF file",
-		category: "pdf",
-		icon: "text",
-		acceptedExtensions: [".pdf"],
-		multiple: false,
-		options: [],
-		process: async (files) => [await pdfToText(files[0])],
-	},
-
 	{
 		id: "pdf-to-images",
 		name: "PDF to Images",
@@ -849,19 +1483,16 @@ const tools: ToolDefinition[] = [
 	{
 		id: "document-viewer",
 		name: "Document Viewer",
-		description: "View Document files locally in the browser",
+		description: "View document files locally in the browser",
 		category: "document",
 		icon: "pdf",
-		acceptedExtensions: [
-			".pdf",
-			".docx",
-			".xlsx",
-			".csv",
-			".txt",
-			".ods",
-			".json",
+		acceptedExtensions: [".pdf", ".docx", ".xlsx", ".csv", ".txt", ".json"],
+		keywords: [
+			"document viewer",
+			"preview file",
+			"open document",
+			"read local file",
 		],
-		keywords: ["preview file", "open document", "read local file"],
 		multiple: false,
 		uiMode: "auto-process",
 		options: [],
@@ -873,7 +1504,6 @@ const tools: ToolDefinition[] = [
 				return [{ blob: file, name: file.name }]
 			}
 			if (ext === ".docx") {
-				// Pass through raw DOCX for docx-preview rendering in UI
 				return [{ blob: file, name: file.name }]
 			}
 			if (ext === ".xlsx") {
@@ -1144,34 +1774,6 @@ const tools: ToolDefinition[] = [
 			batch(files, (f) => rotatePdf(f, Number(opts.angle))),
 	},
 	{
-		id: "pdf-page-numbers",
-		name: "Add Page Numbers",
-		description: "Stamp page numbers on every page of a PDF",
-		category: "pdf",
-		icon: "text",
-		acceptedExtensions: [".pdf"],
-		keywords: ["number pages", "page count", "footer", "header"],
-		multiple: true,
-		options: [
-			{
-				id: "position",
-				label: "Position",
-				type: "select",
-				options: [
-					{ label: "Bottom Center", value: "bottom-center" },
-					{ label: "Bottom Left", value: "bottom-left" },
-					{ label: "Bottom Right", value: "bottom-right" },
-					{ label: "Top Center", value: "top-center" },
-					{ label: "Top Left", value: "top-left" },
-					{ label: "Top Right", value: "top-right" },
-				],
-				default: "bottom-center",
-			},
-		],
-		process: async (files, opts) =>
-			batch(files, (f) => addPageNumbers(f, String(opts.position))),
-	},
-	{
 		id: "pdf-flatten",
 		name: "Flatten PDF",
 		description:
@@ -1214,6 +1816,43 @@ const tools: ToolDefinition[] = [
 				String(opts.keywords || ""),
 			),
 		],
+	},
+	{
+		id: "pdf-strip-metadata",
+		name: "Strip PDF Metadata",
+		description:
+			"Remove all metadata from a PDF including title, author, XMP data, and hidden info dictionary entries",
+		category: "pdf",
+		icon: "trash",
+		acceptedExtensions: [".pdf"],
+		keywords: [
+			"remove metadata",
+			"strip info",
+			"privacy",
+			"clean pdf",
+			"anonymize",
+		],
+		multiple: true,
+		options: [],
+		process: async (files) => batch(files, (f) => stripPdfMetadata(f)),
+	},
+	{
+		id: "pdf-remove-annotations",
+		name: "Remove PDF Annotations",
+		description:
+			"Strip all annotations (links, highlights, comments, form widgets) from every page of a PDF",
+		category: "pdf",
+		icon: "trash",
+		acceptedExtensions: [".pdf"],
+		keywords: [
+			"remove comments",
+			"strip highlights",
+			"clean annotations",
+			"remove links",
+		],
+		multiple: true,
+		options: [],
+		process: async (files) => batch(files, (f) => removePdfAnnotations(f)),
 	},
 	{
 		id: "video-resize",
