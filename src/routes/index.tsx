@@ -28,8 +28,8 @@ function HomePage() {
 					Your files, your browser.
 				</h1>
 				<p className="text-lg text-base-content/60 max-w-2xl mx-auto">
-					Convert, edit, and process files entirely in your browser, with
-					optional Google Drive sync and offline PWA install support.
+					Convert, edit, and process files entirely in your browser. No backend,
+					optional Google Drive sync, and installable offline as a PWA.
 				</p>
 			</section>
 

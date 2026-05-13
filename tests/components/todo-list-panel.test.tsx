@@ -144,4 +144,70 @@ describe("TodoListPanel", () => {
 			expect(screen.queryByText("Disposable task")).toBeNull()
 		})
 	})
+
+	it("expands the todo preview on hover and edits on click", async () => {
+		window.localStorage.setItem(
+			TODO_STORAGE_KEY,
+			JSON.stringify([
+				{
+					id: "hover-test",
+					text: "walk dog",
+					completed: false,
+					createdAt: "2026-05-11T00:00:00.000Z",
+					updatedAt: "2026-05-11T00:00:00.000Z",
+					reminderDate: null,
+					deletedAt: null,
+					draft: false,
+					pinned: false,
+				},
+			]),
+		)
+		render(<TodoListPanel />)
+
+		const preview = await screen.findByRole("button", {
+			name: "Edit todo text",
+		})
+		fireEvent.mouseEnter(preview)
+		expect(preview.textContent).toBe("walk dog")
+
+		fireEvent.click(preview)
+
+		const editor = await screen.findByTestId("todo-edit-input")
+		expect(editor.textContent).toBe("walk dog")
+	})
+
+	it("keeps links clickable when a long todo preview expands", async () => {
+		window.localStorage.setItem(
+			TODO_STORAGE_KEY,
+			JSON.stringify([
+				{
+					id: "link-hover-test",
+					text: [
+						"Review https://example.com/docs",
+						"with enough surrounding text to exercise the expanded preview.",
+						"The link should stay clickable instead of becoming editor text.",
+					].join(" "),
+					completed: false,
+					createdAt: "2026-05-18T00:00:00.000Z",
+					updatedAt: "2026-05-18T00:00:00.000Z",
+					reminderDate: null,
+					deletedAt: null,
+					draft: false,
+					pinned: false,
+				},
+			]),
+		)
+		render(<TodoListPanel />)
+
+		const preview = await screen.findByRole("button", {
+			name: "Edit todo text",
+		})
+		fireEvent.mouseEnter(preview)
+
+		const link = screen.getByTestId("todo-link") as HTMLAnchorElement
+		expect(link.href).toBe("https://example.com/docs")
+		fireEvent.click(link)
+
+		expect(screen.queryByTestId("todo-edit-input")).toBeNull()
+	})
 })

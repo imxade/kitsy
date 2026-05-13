@@ -24,6 +24,9 @@ import {
 } from "../lib/todo-list"
 
 type FilterMode = "all" | "open" | "done"
+type DocumentWithCaretRange = Document & {
+	caretRangeFromPoint?: (x: number, y: number) => Range | null
+}
 
 function formatReminderDate(value: string | null) {
 	if (!value) return null
@@ -50,6 +53,55 @@ function moveCaretToEnd(element: HTMLElement) {
 	range.collapse(false)
 	selection.removeAllRanges()
 	selection.addRange(range)
+}
+
+function getTextOffsetAtPoint(element: HTMLElement, x: number, y: number) {
+	let range: Range | null = null
+	const position = document.caretPositionFromPoint?.(x, y)
+
+	if (position && element.contains(position.offsetNode)) {
+		range = document.createRange()
+		range.setStart(position.offsetNode, position.offset)
+	} else {
+		const fallbackRange = (
+			document as DocumentWithCaretRange
+		).caretRangeFromPoint?.(x, y)
+		if (fallbackRange && element.contains(fallbackRange.startContainer)) {
+			range = fallbackRange
+		}
+	}
+
+	if (!range) return null
+
+	const before = document.createRange()
+	before.selectNodeContents(element)
+	before.setEnd(range.startContainer, range.startOffset)
+	return before.toString().length
+}
+
+function moveCaretToTextOffset(element: HTMLElement, offset: number) {
+	const selection = window.getSelection()
+	if (!selection) return
+
+	const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT)
+	let textNode = walker.nextNode()
+	let remaining = offset
+
+	while (textNode) {
+		const length = textNode.textContent?.length ?? 0
+		if (remaining <= length) {
+			const range = document.createRange()
+			range.setStart(textNode, remaining)
+			range.collapse(true)
+			selection.removeAllRanges()
+			selection.addRange(range)
+			return
+		}
+		remaining -= length
+		textNode = walker.nextNode()
+	}
+
+	moveCaretToEnd(element)
 }
 
 function insertPlainTextAtSelection(element: HTMLElement, text: string) {
@@ -123,12 +175,9 @@ function EditableTodoCard({
 }) {
 	const editorRef = useRef<HTMLDivElement>(null)
 	const editingItemIdRef = useRef<string | null>(null)
+	const pendingCaretOffsetRef = useRef<number | null>(null)
 	const [isExpanded, setIsExpanded] = useState(false)
 	const [isEditing, setIsEditing] = useState(false)
-	const [clickCoords, setClickCoords] = useState<{
-		x: number
-		y: number
-	} | null>(null)
 	const reminderToday = !isDraft && isTodoReminderToday(item)
 	const showEditor = isDraft || isEditing
 
@@ -145,56 +194,22 @@ function EditableTodoCard({
 		editor.textContent = item.text
 
 		if (isEditing) {
-			editor.focus()
-
-			if (clickCoords) {
-				const { x, y } = clickCoords
-				setClickCoords(null)
-
-				let range: Range | null = null
-				if (document.caretRangeFromPoint) {
-					range = document.caretRangeFromPoint(x, y)
-				} else if ("caretPositionFromPoint" in document) {
-					const pos = (
-						document as Document & {
-							caretPositionFromPoint: (
-								x: number,
-								y: number,
-							) => { offsetNode: Node; offset: number } | null
-						}
-					).caretPositionFromPoint(x, y)
-					if (pos) {
-						range = document.createRange()
-						range.setStart(pos.offsetNode, pos.offset)
-						range.collapse(true)
-					}
-				}
-
-				if (range && editor.contains(range.startContainer)) {
-					const selection = window.getSelection()
-					if (selection) {
-						selection.removeAllRanges()
-						selection.addRange(range)
-					}
-				} else {
-					moveCaretToEnd(editor)
-				}
-			} else {
-				moveCaretToEnd(editor)
+			editor.focus({ preventScroll: true })
+			if (pendingCaretOffsetRef.current !== null) {
+				moveCaretToTextOffset(editor, pendingCaretOffsetRef.current)
+				pendingCaretOffsetRef.current = null
 			}
 		}
-	}, [isEditing, item.id, item.text, showEditor, clickCoords])
+	}, [isEditing, item.id, item.text, showEditor])
 
-	const startEditing = (x?: number, y?: number) => {
-		if (x !== undefined && y !== undefined) setClickCoords({ x, y })
+	const startEditing = (caretOffset: number | null = null) => {
+		pendingCaretOffsetRef.current = caretOffset
 		setIsEditing(true)
 		setIsExpanded(true)
 	}
 
 	const editableClassName = `w-full rounded-md px-0 py-0 text-sm leading-6 whitespace-pre-wrap break-words focus:outline-none focus:ring-2 focus:ring-primary/30 ${
-		isExpanded || isEditing
-			? "max-h-[60vh] overflow-y-auto"
-			: "max-h-6 overflow-hidden"
+		isExpanded || isEditing ? "" : "max-h-6 overflow-hidden"
 	} ${item.completed ? "text-base-content/60 line-through" : ""}`
 
 	return (
@@ -282,10 +297,25 @@ function EditableTodoCard({
 								tabIndex={0}
 								aria-label="Edit todo text"
 								className={`${editableClassName} cursor-text`}
+								onPointerDown={(event) => {
+									if (event.button !== 0) return
+									const target = event.target as HTMLElement
+									if (target.closest("a")) return
+
+									event.preventDefault()
+									startEditing(
+										getTextOffsetAtPoint(
+											event.currentTarget,
+											event.clientX,
+											event.clientY,
+										),
+									)
+								}}
 								onClick={(event) => {
 									const target = event.target as HTMLElement
 									if (target.closest("a")) return
-									startEditing(event.clientX, event.clientY)
+									if (pendingCaretOffsetRef.current !== null) return
+									startEditing()
 								}}
 								onKeyDown={(event) => {
 									if (
