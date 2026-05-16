@@ -8,7 +8,8 @@ import {
 	imageToSvg,
 	blurImage,
 	pixelateImage,
-	addImageWatermark,
+	addTextToImage,
+	removeImageBackground,
 } from "../../src/lib/image-processor"
 import { createDummyImage } from "./test-helpers"
 
@@ -26,7 +27,8 @@ describe("image-processor", () => {
 		expect(typeof imageToSvg).toBe("function")
 		expect(typeof blurImage).toBe("function")
 		expect(typeof pixelateImage).toBe("function")
-		expect(typeof addImageWatermark).toBe("function")
+		expect(typeof addTextToImage).toBe("function")
+		expect(typeof removeImageBackground).toBe("function")
 	})
 
 	it("createDummyImage produces a valid File object", () => {

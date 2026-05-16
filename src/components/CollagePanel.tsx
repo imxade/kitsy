@@ -20,9 +20,74 @@ interface CollagePanelProps {
 
 const CANVAS_WIDTH = 800
 const CANVAS_HEIGHT = 600
+const COLLAGE_GAP = 48
+const COLLAGE_COLUMNS = 3
+
+function layoutImages(loaded: Array<{ id: string; src: HTMLImageElement }>) {
+	if (loaded.length === 0) {
+		return {
+			images: [],
+			stageSize: { width: CANVAS_WIDTH, height: CANVAS_HEIGHT },
+		}
+	}
+
+	const rows: Array<typeof loaded> = []
+	for (let i = 0; i < loaded.length; i += COLLAGE_COLUMNS) {
+		rows.push(loaded.slice(i, i + COLLAGE_COLUMNS))
+	}
+
+	const rowWidths = rows.map((row) =>
+		row.reduce(
+			(total, item, index) =>
+				total + item.src.naturalWidth + (index > 0 ? COLLAGE_GAP : 0),
+			0,
+		),
+	)
+	const rowHeights = rows.map((row) =>
+		Math.max(...row.map((item) => item.src.naturalHeight)),
+	)
+	const stageWidth = Math.max(CANVAS_WIDTH, ...rowWidths) + COLLAGE_GAP * 2
+	const contentHeight = rowHeights.reduce((total, height) => total + height, 0)
+	const stageHeight =
+		Math.max(CANVAS_HEIGHT, contentHeight) + COLLAGE_GAP * (rows.length + 1)
+
+	let y = COLLAGE_GAP
+	const images: CollageImage[] = []
+	for (let rowIndex = 0; rowIndex < rows.length; rowIndex++) {
+		let x = COLLAGE_GAP
+		const row = rows[rowIndex]
+		for (const item of row) {
+			images.push({
+				id: item.id,
+				src: item.src,
+				x,
+				y,
+				width: item.src.naturalWidth,
+				height: item.src.naturalHeight,
+				rotation: 0,
+				scaleX: 1,
+				scaleY: 1,
+			})
+			x += item.src.naturalWidth + COLLAGE_GAP
+		}
+		y += rowHeights[rowIndex] + COLLAGE_GAP
+	}
+
+	return {
+		images,
+		stageSize: {
+			width: Math.ceil(stageWidth),
+			height: Math.ceil(stageHeight),
+		},
+	}
+}
 
 export default function CollagePanel({ files }: CollagePanelProps) {
 	const [images, setImages] = useState<CollageImage[]>([])
+	const [stageSize, setStageSize] = useState({
+		width: CANVAS_WIDTH,
+		height: CANVAS_HEIGHT,
+	})
 	const [selectedId, setSelectedId] = useState<string | null>(null)
 	const stageRef = useRef<Konva.Stage>(null)
 	const trRef = useRef<Konva.Transformer>(null)
@@ -30,11 +95,16 @@ export default function CollagePanel({ files }: CollagePanelProps) {
 	// Load files into images
 	useEffect(() => {
 		let cancelled = false
+		const objectUrls: string[] = []
 		const loadImages = async () => {
-			const loaded: CollageImage[] = []
+			const loaded: Array<{
+				id: string
+				src: HTMLImageElement
+			}> = []
 			for (let i = 0; i < files.length; i++) {
 				const file = files[i]
 				const url = URL.createObjectURL(file)
+				objectUrls.push(url)
 				const img = new Image()
 				img.crossOrigin = "anonymous"
 				await new Promise<void>((resolve, reject) => {
@@ -43,32 +113,23 @@ export default function CollagePanel({ files }: CollagePanelProps) {
 					img.src = url
 				})
 				if (cancelled) {
-					URL.revokeObjectURL(url)
 					return
 				}
-				// Scale to fit canvas
-				const scale = Math.min(
-					(CANVAS_WIDTH * 0.4) / img.width,
-					(CANVAS_HEIGHT * 0.4) / img.height,
-					1,
-				)
 				loaded.push({
 					id: `img-${i}-${Date.now()}`,
 					src: img,
-					x: 50 + (i % 3) * 250,
-					y: 50 + Math.floor(i / 3) * 200,
-					width: img.width * scale,
-					height: img.height * scale,
-					rotation: 0,
-					scaleX: 1,
-					scaleY: 1,
 				})
 			}
-			if (!cancelled) setImages(loaded)
+			if (!cancelled) {
+				const nextLayout = layoutImages(loaded)
+				setImages(nextLayout.images)
+				setStageSize(nextLayout.stageSize)
+			}
 		}
 		loadImages()
 		return () => {
 			cancelled = true
+			for (const objectUrl of objectUrls) URL.revokeObjectURL(objectUrl)
 		}
 	}, [files])
 
@@ -145,7 +206,8 @@ export default function CollagePanel({ files }: CollagePanelProps) {
 		setTimeout(() => {
 			const uri = stageRef.current?.toDataURL({
 				mimeType: format === "jpg" ? "image/jpeg" : "image/png",
-				quality: 0.92,
+				quality: 1,
+				pixelRatio: 1,
 			})
 			const a = document.createElement("a")
 			a.href = uri
@@ -194,12 +256,12 @@ export default function CollagePanel({ files }: CollagePanelProps) {
 			{/* Canvas */}
 			<div
 				className="border border-base-300 rounded-lg overflow-hidden bg-base-200"
-				style={{ width: CANVAS_WIDTH, maxWidth: "100%" }}
+				style={{ width: "100%", maxHeight: "70vh", overflow: "auto" }}
 			>
 				<Stage
 					ref={stageRef}
-					width={CANVAS_WIDTH}
-					height={CANVAS_HEIGHT}
+					width={stageSize.width}
+					height={stageSize.height}
 					onMouseDown={(e) => {
 						if (e.target === e.target.getStage()) setSelectedId(null)
 					}}

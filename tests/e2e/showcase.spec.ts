@@ -53,13 +53,14 @@ const TOOL_TESTS: ToolTest[] = [
 	{ id: "image-upscale", file: "image.jpg" },
 	{ id: "image-blur", file: "image.jpg" },
 	{ id: "image-pixelate", file: "image.jpg" },
-	{ id: "image-watermark", file: "image.jpg" },
 	{
 		id: "image-collage",
 		file: ["image.jpg", "image.png"],
 		skipRun: true,
 		customPanel: true,
 	},
+	{ id: "image-add-text", file: "image.jpg" },
+	{ id: "image-remove-bg", file: "image.jpg", timeout: 420_000 },
 
 	// ── PDF ──
 	{ id: "pdf-merge", file: ["document.pdf", "document2.pdf"] },

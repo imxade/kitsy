@@ -9,6 +9,7 @@ import { useAppShell } from "./AppShellProvider"
 import Icon from "./Icon"
 import CollagePanel from "./CollagePanel"
 import RecorderPanel from "./RecorderPanel"
+import TextOverlayPanel from "./TextOverlayPanel"
 import TodoListPanel from "./TodoListPanel"
 
 interface ToolPanelProps {
@@ -1364,6 +1365,19 @@ export default function ToolPanel({ tool, presetDefaults }: ToolPanelProps) {
 													}))
 												}
 											/>
+										) : opt.type === "color" ? (
+											<input
+												id={`opt-${opt.id}`}
+												type="color"
+												className="input input-bordered input-sm h-10 w-full p-1"
+												value={String(options[opt.id] ?? opt.default)}
+												onChange={(e) =>
+													setOptions((p) => ({
+														...p,
+														[opt.id]: e.target.value,
+													}))
+												}
+											/>
 										) : opt.type === "file" ? (
 											<input
 												id={`opt-${opt.id}`}
@@ -1424,6 +1438,15 @@ export default function ToolPanel({ tool, presetDefaults }: ToolPanelProps) {
 			{/* Image Collage */}
 			{uiMode === "collage" && files.length > 0 && (
 				<CollagePanel files={files} />
+			)}
+
+			{uiMode === "text-overlay" && files.length > 0 && (
+				<TextOverlayPanel
+					files={files}
+					options={options}
+					onResultsChange={setResults}
+					onErrorChange={setError}
+				/>
 			)}
 
 			{uiMode === "recorder" && (

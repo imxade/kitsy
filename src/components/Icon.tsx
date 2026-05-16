@@ -45,6 +45,7 @@ import {
 	IconCloud,
 	IconCloudOff,
 	IconCloudCheck,
+	IconWand,
 } from "@tabler/icons-react"
 
 export const ICON_MAP = {
@@ -93,6 +94,7 @@ export const ICON_MAP = {
 	cloud: IconCloud,
 	"cloud-off": IconCloudOff,
 	"cloud-check": IconCloudCheck,
+	wand: IconWand,
 } as const
 
 export type IconName = keyof typeof ICON_MAP

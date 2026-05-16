@@ -13,7 +13,8 @@ import {
 	upscaleImage,
 	blurImage,
 	pixelateImage,
-	addImageWatermark,
+	addTextToImage,
+	removeImageBackground,
 } from "./image-processor"
 import {
 	mergePdfs,
@@ -82,7 +83,7 @@ export type ToolCategory =
 export interface ToolOption {
 	id: string
 	label: string
-	type: "select" | "number" | "checkbox" | "text" | "file"
+	type: "select" | "number" | "checkbox" | "text" | "color" | "file"
 	options?: { label: string; value: string }[]
 	default?: string | number | boolean
 	min?: number
@@ -103,7 +104,13 @@ export interface ToolDefinition {
 	keywords?: string[]
 	multiple: boolean
 	requiresFiles?: boolean
-	uiMode?: "standard" | "auto-process" | "collage" | "recorder" | "todo"
+	uiMode?:
+		| "standard"
+		| "auto-process"
+		| "collage"
+		| "text-overlay"
+		| "recorder"
+		| "todo"
 	options: ToolOption[]
 	process: (
 		files: File[],
@@ -173,7 +180,7 @@ const tools: ToolDefinition[] = [
 				id: "quality",
 				label: "Quality (%)",
 				type: "number",
-				default: 85,
+				default: 100,
 				min: 10,
 				max: 100,
 				isVisible: (opts) => opts.format !== "image/svg+xml",
@@ -189,12 +196,13 @@ const tools: ToolDefinition[] = [
 			},
 		],
 		process: async (files, opts) =>
-			batch(files, (f) =>
-				convertImage(f, String(opts.format), {
-					quality: Number(opts.quality),
+			batch(files, (f) => {
+				const quality = Number(opts.quality)
+				return convertImage(f, String(opts.format), {
+					quality: quality < 100 ? quality : undefined,
 					numberofcolors: Number(opts.numberofcolors),
-				}),
-			),
+				})
+			}),
 	},
 	{
 		id: "image-resize",
@@ -1697,9 +1705,10 @@ const tools: ToolDefinition[] = [
 		],
 	},
 	{
-		id: "image-watermark",
-		name: "Add Image Watermark",
-		description: "Add a text watermark",
+		id: "image-add-text",
+		name: "Add Text / Watermark to Image",
+		description:
+			"Add captions, labels, or watermarks with a draggable, resizable text box",
 		category: "image",
 		icon: "text",
 		acceptedExtensions: [
@@ -1712,12 +1721,131 @@ const tools: ToolDefinition[] = [
 			".gif",
 			".svg",
 		],
+		keywords: [
+			"text overlay",
+			"caption",
+			"label",
+			"annotate",
+			"title",
+			"subtitle",
+			"watermark",
+			"image watermark",
+		],
 		multiple: true,
+		uiMode: "text-overlay",
 		options: [
-			{ id: "text", label: "Watermark Text", type: "text", default: "Kitsy" },
+			{
+				id: "text",
+				label: "Text",
+				type: "text",
+				default: "Hello World",
+			},
+			{
+				id: "fontFamily",
+				label: "Font",
+				type: "select",
+				options: [
+					{ label: "Sans Serif", value: "sans-serif" },
+					{ label: "Serif", value: "serif" },
+					{ label: "Monospace", value: "monospace" },
+					{ label: "Cursive", value: "cursive" },
+				],
+				default: "sans-serif",
+			},
+			{ id: "color", label: "Text Color", type: "color", default: "#ffffff" },
+			{
+				id: "bold",
+				label: "Bold",
+				type: "checkbox",
+				default: false,
+			},
+			{
+				id: "italic",
+				label: "Italic",
+				type: "checkbox",
+				default: false,
+			},
+			{
+				id: "bgBox",
+				label: "Background Box",
+				type: "checkbox",
+				default: false,
+			},
+			{
+				id: "bgBoxColor",
+				label: "Box Color",
+				type: "color",
+				default: "#000000",
+				isVisible: (opts) => Boolean(opts.bgBox),
+			},
 		],
 		process: async (files, opts) =>
-			batch(files, (f) => addImageWatermark(f, String(opts.text))),
+			batch(files, (f) =>
+				addTextToImage(f, String(opts.text), {
+					fontFamily: String(opts.fontFamily),
+					color: String(opts.color),
+					bold: Boolean(opts.bold),
+					italic: Boolean(opts.italic),
+					bgBox: Boolean(opts.bgBox),
+					bgBoxColor: String(opts.bgBoxColor),
+				}),
+			),
+	},
+	{
+		id: "image-remove-bg",
+		name: "Remove Image Background",
+		description:
+			"Remove image backgrounds with an in-browser AI model and optional replacement color",
+		category: "image",
+		icon: "wand",
+		acceptedExtensions: [
+			".png",
+			".jpg",
+			".jpeg",
+			".webp",
+			".avif",
+			".bmp",
+			".gif",
+			".svg",
+		],
+		keywords: [
+			"background remover",
+			"remove bg",
+			"transparent",
+			"cutout",
+			"ai background removal",
+			"subject mask",
+		],
+		multiple: true,
+		producedExtensions: [".png"],
+		options: [
+			{
+				id: "backgroundMode",
+				label: "Background",
+				type: "select",
+				options: [
+					{ label: "Transparent", value: "transparent" },
+					{ label: "Custom Color", value: "color" },
+				],
+				default: "transparent",
+			},
+			{
+				id: "backgroundColor",
+				label: "Background Color",
+				type: "color",
+				default: "#ffffff",
+				isVisible: (opts) => opts.backgroundMode === "color",
+			},
+		],
+		process: async (files, opts) =>
+			batch(files, (f) =>
+				removeImageBackground(f, {
+					backgroundColor:
+						opts.backgroundMode === "color"
+							? String(opts.backgroundColor)
+							: "transparent",
+				}),
+			),
 	},
 	{
 		id: "pdf-compress",

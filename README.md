@@ -8,8 +8,7 @@ Useful if you want an offline-friendly alternative to TinyWow, 123apps, Smallpdf
 
 > Please consider leaving a star.
 
-
-https://github.com/user-attachments/assets/b8ca3210-76de-4be8-b7d0-dd42003d5815
+https://github.com/user-attachments/assets/f9865175-f371-4a42-a2d9-6563e7e64c68
 
 ---
 
@@ -23,9 +22,9 @@ flowchart TD
     Router --> HomeRoute["/ Route"]
     Router --> ToolRoute["/tool/$id Route"]
     HomeRoute --> SearchRank["search.ts<br/>(intent-aware ranking)"]
-    ToolRoute --> Registry["tool-registry.ts<br/>(62 registered tools)"]
+    ToolRoute --> Registry["tool-registry.ts<br/>(63 registered tools)"]
     Registry --> Processors["Processor Functions"]
-    Processors --> ImgProc["image-processor.ts<br/>(OffscreenCanvas + imagetracerjs)"]
+    Processors --> ImgProc["image-processor.ts<br/>(OffscreenCanvas + imagetracerjs + IMG.LY background removal)"]
     Processors --> PdfProc["pdf-processor.ts<br/>(pdf-lib + pdfjs-dist + qpdf-wasm + signing libs)"]
     Processors --> FileProc["file-processor.ts<br/>(fflate + papaparse)"]
     Processors --> FfmpegProc["ffmpeg-processor.ts<br/>(FFmpeg.wasm)"]
@@ -88,7 +87,7 @@ This list matches the current registry.
 
 | Category | Tools |
 | --- | --- |
-| Image | `image-convert`, `image-resize`, `image-rotate`, `image-crop`, `image-upscale`, `image-collage`, `image-blur`, `image-pixelate`, `image-watermark` |
+| Image | `image-convert`, `image-resize`, `image-rotate`, `image-crop`, `image-upscale`, `image-collage`, `image-blur`, `image-pixelate`, `image-add-text`, `image-remove-bg` |
 | PDF | `pdf-merge`, `pdf-split`, `pdf-delete-pages`, `pdf-reorder`, `pdf-header-footer`, `pdf-bates-numbering`, `pdf-add-blank-pages`, `pdf-remove-blank-pages`, `pdf-crop-pages`, `pdf-overlay-pages`, `pdf-resize-pages`, `pdf-n-up`, `pdf-page-dimensions`, `pdf-sign-visual`, `pdf-digital-sign`, `pdf-validate-signature`, `pdf-lock`, `pdf-unlock`, `pdf-images-to-pdf`, `pdf-to-images`, `pdf-compress`, `pdf-watermark`, `pdf-rotate`, `pdf-flatten`, `pdf-metadata`, `pdf-strip-metadata`, `pdf-remove-annotations` |
 | Video | `video-convert`, `video-trim`, `video-extract-audio`, `video-merge`, `video-audio-merge`, `video-mute`, `video-speed`, `screen-recorder`, `camera-recorder`, `video-resize`, `video-crop`, `video-watermark`, `video-extract-frames` |
 | Audio | `audio-convert`, `audio-trim`, `audio-merge`, `audio-recorder`, `audio-volume`, `audio-fade` |
@@ -96,7 +95,7 @@ This list matches the current registry.
 | File | `file-zip`, `file-unzip` |
 | Data | `data-csv-to-json`, `data-json-to-csv`, `data-format-json`, `todo-list` |
 
-Current count: 62 tools.
+Current count: 63 tools.
 
 ---
 
@@ -104,7 +103,9 @@ Current count: 62 tools.
 
 ### Image Processor
 
-`src/lib/image-processor.ts` uses `OffscreenCanvas` and native image loading. SVG input is loaded through `HTMLImageElement`; other images use `createImageBitmap()`. It implements image conversion, resize, rotate, crop, upscale, blur, pixelate, text watermark, and raster-to-SVG tracing through `imagetracerjs`.
+`src/lib/image-processor.ts` uses `OffscreenCanvas` and native image loading. SVG input is loaded through `HTMLImageElement`; other images use `createImageBitmap()`. It implements image conversion, resize, rotate, crop, upscale, blur, pixelate, draggable text-box overlays for captions and watermarks with automatic wrapping/font fitting, and raster-to-SVG tracing through `imagetracerjs`.
+
+AI background removal uses `@imgly/background-removal` with the `isnet_quint8` model and local `@imgly/background-removal-data` assets served from `/background-removal/`. The tool outputs transparent PNGs by default and can composite the cutout over a selected background color.
 
 ### PDF Processor
 
@@ -239,8 +240,9 @@ The production build precaches `.output/public` plus additional entries:
 - `/ffmpeg/ffmpeg-core.js`
 - `/ffmpeg/ffmpeg-core.wasm`
 - `/qpdf.wasm`
+- `/background-removal/` model and ONNX Runtime chunks generated during `postinstall`
 
-The FFmpeg and qpdf assets are copied into `public/` by `scripts/stage-wasm-assets.ts` during `postinstall`. Revisions include the installed package versions. The maximum precache file size is `160 * 1024 * 1024` bytes.
+The FFmpeg, qpdf, and IMG.LY background-removal assets are copied into `public/` by `scripts/stage-wasm-assets.ts` during `postinstall`. The background-removal data package is installed from the versioned IMG.LY data tarball and staged locally so runtime inference does not depend on a CDN. Revisions include the installed package versions. The maximum precache file size is `160 * 1024 * 1024` bytes.
 
 `AppShellProvider` registers `/sw.js`, prefetches FFmpeg, and shows an offline-ready toast once both service worker readiness and FFmpeg prefetch complete. qpdf is precached by the service worker but initialized lazily by matching PDF tools.
 
@@ -320,7 +322,7 @@ Use `nix develop` for Node 24 and npm:
 nix develop
 ```
 
-The shell hook runs `npm install`, prints `node -v` and `npm -v`, and enters `zsh`. `postinstall` stages FFmpeg and qpdf WASM assets.
+The shell hook runs `npm install`, prints `node -v` and `npm -v`, and enters `zsh`. `postinstall` stages FFmpeg, qpdf, and background-removal WASM/model assets.
 
 Common commands:
 
