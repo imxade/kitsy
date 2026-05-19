@@ -46,7 +46,7 @@ export default function RecorderPanel({
 	const [isClientReady, setIsClientReady] = useState(false)
 	const [status, setStatus] = useState("Ready to record.")
 	const [elapsedMs, setElapsedMs] = useState(0)
-	const [includeCamera, setIncludeCamera] = useState(kind === "screen")
+	const [includeCamera, setIncludeCamera] = useState(false)
 	const [includeMicrophone, setIncludeMicrophone] = useState(true)
 	const [includeSystemAudio, setIncludeSystemAudio] = useState(false)
 	const [overlayRect, setOverlayRect] =
@@ -146,6 +146,7 @@ export default function RecorderPanel({
 	const startCompositePreview = async (
 		displayStream: MediaStream,
 		cameraStream: MediaStream | null,
+		captureCanvasStream: boolean,
 	) => {
 		const canvas = canvasRef.current
 		const screenVideo = hiddenScreenVideoRef.current
@@ -198,7 +199,7 @@ export default function RecorderPanel({
 		}
 
 		drawFrame()
-		return canvas.captureStream(30)
+		return captureCanvasStream ? canvas.captureStream(30) : null
 	}
 
 	const createMixedAudioTracks = (streams: Array<MediaStream | null>) => {
@@ -302,18 +303,24 @@ export default function RecorderPanel({
 								audio: includeMicrophone,
 							})
 						: null
-				const canvasStream = await startCompositePreview(
-					displayStream,
-					cameraStream,
-				)
 				const mixedAudioTracks = createMixedAudioTracks([
 					includeSystemAudio ? displayStream : null,
 					includeMicrophone ? cameraStream : null,
 				])
-				recordingStream = new MediaStream([
-					...canvasStream.getVideoTracks(),
-					...mixedAudioTracks,
-				])
+				const canvasStream = await startCompositePreview(
+					displayStream,
+					cameraStream,
+					includeCamera,
+				)
+				recordingStream = includeCamera
+					? new MediaStream([
+							...(canvasStream?.getVideoTracks() ?? []),
+							...mixedAudioTracks,
+						])
+					: new MediaStream([
+							...displayStream.getVideoTracks(),
+							...mixedAudioTracks,
+						])
 			}
 
 			displayStreamRef.current = displayStream
