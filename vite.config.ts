@@ -7,6 +7,7 @@ import { devtools } from "@tanstack/devtools-vite"
 import { tanstackStart } from "@tanstack/react-start/plugin/vite"
 import { nitro } from "nitro/vite"
 import { serwist } from "@serwist/vite"
+import { createHash } from "node:crypto"
 import { existsSync, readFileSync } from "node:fs"
 import { dirname, join } from "node:path"
 import { fileURLToPath } from "node:url"
@@ -38,6 +39,39 @@ function packageVersion(packageName: string): string {
 
 const ffmpegCoreVersion = packageVersion("@ffmpeg/core")
 const qpdfWasmVersion = packageVersion("@neslinesli93/qpdf-wasm")
+const backgroundRemovalAssetKeys = [
+	"/onnxruntime-web/ort-wasm-simd-threaded.wasm",
+	"/onnxruntime-web/ort-wasm-simd-threaded.mjs",
+	"/models/isnet_quint8",
+]
+
+function backgroundRemovalPrecacheEntries() {
+	const resourcesPath = join("public", "background-removal", "resources.json")
+	if (!existsSync(resourcesPath)) return []
+
+	const resources = readFileSync(resourcesPath)
+	const resourceMap = JSON.parse(resources.toString("utf-8")) as Record<
+		string,
+		{ chunks?: Array<{ name: string }> }
+	>
+	const chunkNames = new Set<string>()
+	for (const key of backgroundRemovalAssetKeys) {
+		for (const chunk of resourceMap[key]?.chunks ?? []) {
+			chunkNames.add(chunk.name)
+		}
+	}
+
+	return [
+		{
+			url: "/background-removal/resources.json",
+			revision: createHash("sha256").update(resources).digest("hex"),
+		},
+		...[...chunkNames].sort().map((chunkName) => ({
+			url: `/background-removal/${chunkName}`,
+			revision: null,
+		})),
+	]
+}
 
 export default defineConfig({
 	server: {
@@ -91,6 +125,7 @@ export default defineConfig({
 					url: "/qpdf.wasm",
 					revision: `qpdf-${qpdfWasmVersion}`,
 				},
+				...backgroundRemovalPrecacheEntries(),
 			],
 			injectionPoint: "self.__WB_MANIFEST",
 			rollupFormat: "iife",

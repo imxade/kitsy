@@ -16,6 +16,7 @@ todo*
 fixtures
 samples
 public/ffmpeg
+public/background-removal
 public/libreoffice-wasm
 public/qpdf.wasm
 playwright-report/
