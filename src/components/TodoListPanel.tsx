@@ -607,6 +607,7 @@ export default function TodoListPanel() {
 				if (text.trim().length === 0 && !reminderDate) return prev
 				return mergeTodoItems(prev, [
 					createTodoItem(text, {
+						id: emptyDraftRef.current?.id,
 						draft: true,
 						reminderDate,
 						updatedAt,
@@ -650,6 +651,7 @@ export default function TodoListPanel() {
 					: item,
 			)
 		})
+		emptyDraftRef.current = null
 	}
 
 	const updateTodoItem = (id: string, patch: Partial<TodoItem>) => {
