@@ -11,7 +11,6 @@
     devShells.${system}.default = pkgs.mkShell {
       buildInputs = [
         pkgs.nodejs_24
-        pkgs.act
         pkgs.zsh
       ];
 
@@ -19,7 +18,8 @@
         npm install
         node -v
         npm -v
-        zsh
+        npm run build 
+        npm run start
       '';
     };
   };
