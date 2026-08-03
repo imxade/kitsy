@@ -80,10 +80,16 @@
       "lightningcss"
     ],
     "overrides": {
-      "h3-v2": "npm:h3@^2.0.1-rc.20"
+      "h3-v2": "npm:h3@^2.0.1-rc.20",
+      "brace-expansion": "5.0.8",
+      "minimatch": "10.2.5",
+      "uuid": "11.1.1"
     }
   },
   "overrides": {
-    "h3-v2": "npm:h3@^2.0.1-rc.20"
+    "h3-v2": "npm:h3@^2.0.1-rc.20",
+    "brace-expansion": "5.0.8",
+    "minimatch": "10.2.5",
+    "uuid": "11.1.1"
   }
 }
