@@ -8,8 +8,6 @@ Useful if you want an offline-friendly alternative to TinyWow, 123apps, Smallpdf
 
 > Please consider leaving a star.
 
-https://github.com/user-attachments/assets/f9865175-f371-4a42-a2d9-6563e7e64c68
-
 ---
 
 ## Architecture
