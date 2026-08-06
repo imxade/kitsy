@@ -19,6 +19,7 @@ import {
 import {
 	mergePdfs,
 	splitPdf,
+	extractPdfPages,
 	deletePdfPages,
 	reorderPdfPages,
 	addPdfHeaderFooter,
@@ -395,6 +396,33 @@ const tools: ToolDefinition[] = [
 		multiple: false,
 		options: [],
 		process: async (files) => await splitPdf(files[0]),
+	},
+	{
+		id: "pdf-extract-pages",
+		name: "Extract PDF Pages",
+		description: "Extract a range of pages into a new PDF (e.g. 1,3-5,150-460)",
+		category: "pdf",
+		icon: "scissors",
+		acceptedExtensions: [".pdf"],
+		keywords: ["split", "range", "extract", "pages", "subset"],
+		multiple: false,
+		options: [
+			{
+				id: "pageRange",
+				label: "Page Range",
+				type: "text",
+				default: "",
+			},
+		],
+		process: async (files, opts) => {
+			const range = String(opts.pageRange || "").trim()
+			if (!range) {
+				throw new Error(
+					"Enter a page range, e.g. 1,3-5 or 150-460",
+				)
+			}
+			return [await extractPdfPages(files[0], range)]
+		},
 	},
 	{
 		id: "pdf-delete-pages",
