@@ -1,4 +1,4 @@
-import { useState, useRef } from "react"
+import { useState, useRef, useEffect } from "react"
 import Icon from "./Icon"
 
 interface FileDropzoneProps {
@@ -16,6 +16,39 @@ export default function FileDropzone({
 }: FileDropzoneProps) {
 	const [isDragging, setIsDragging] = useState(false)
 	const inputRef = useRef<HTMLInputElement>(null)
+
+	// Clipboard paste support
+	useEffect(() => {
+		const handlePaste = (e: ClipboardEvent) => {
+			const clipboardData = e.clipboardData
+			if (!clipboardData) return
+
+			const pastedFiles: File[] = []
+
+			// First try clipboardData.files (for file pastes)
+			if (clipboardData.files.length > 0) {
+				pastedFiles.push(...Array.from(clipboardData.files))
+			}
+
+			// Also check clipboardData.items for image blobs (e.g. screenshots)
+			if (pastedFiles.length === 0 && clipboardData.items) {
+				for (const item of Array.from(clipboardData.items)) {
+					if (item.kind === "file") {
+						const file = item.getAsFile()
+						if (file) pastedFiles.push(file)
+					}
+				}
+			}
+
+			if (pastedFiles.length > 0) {
+				e.preventDefault()
+				onFilesSelected(multiple ? pastedFiles : [pastedFiles[0]])
+			}
+		}
+
+		document.addEventListener("paste", handlePaste)
+		return () => document.removeEventListener("paste", handlePaste)
+	}, [multiple, onFilesSelected])
 
 	const handleDrag = (e: React.DragEvent) => {
 		e.preventDefault()
@@ -90,7 +123,7 @@ export default function FileDropzone({
 			<p className="text-lg font-semibold text-base-content">
 				{isDragging ? "Drop files here" : "Drag & drop files here"}
 			</p>
-			<p className="text-sm text-base-content/60 mt-1">or click to browse</p>
+			<p className="text-sm text-base-content/60 mt-1">or paste / click to browse</p>
 			{acceptedExtensions[0] !== "*" && (
 				<p className="text-xs text-base-content/40 mt-3">
 					Supported: {acceptedExtensions.join(", ")}
@@ -108,3 +141,4 @@ export default function FileDropzone({
 		</div>
 	)
 }
+
