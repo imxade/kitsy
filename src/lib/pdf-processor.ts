@@ -1801,11 +1801,48 @@ export async function imagesToPdf(files: File[]): Promise<ProcessedFile> {
 }
 
 export async function compressPdf(file: File): Promise<ProcessedFile> {
+	const pdfjsLib = await getPdfjsLib()
 	const bytes = await file.arrayBuffer()
-	const doc = await PDFDocument.load(bytes)
-	const compressedBytes = await doc.save({
-		useObjectStreams: true,
-	})
+	const srcDoc = await pdfjsLib.getDocument({
+		data: new Uint8Array(bytes),
+		useWorkerFetch: false,
+		isEvalSupported: false,
+		useSystemFonts: true,
+	}).promise
+
+	const dest = await PDFDocument.create()
+	const compressScale = 1.0
+	const jpegQuality = 0.65
+
+	for (let i = 1; i <= srcDoc.numPages; i++) {
+		const page = await srcDoc.getPage(i)
+		const viewport = page.getViewport({ scale: compressScale })
+		const canvas = new OffscreenCanvas(viewport.width, viewport.height)
+		const ctx = canvas.getContext("2d")
+		if (!ctx) throw new Error("Could not get 2D context")
+
+		await page.render({
+			canvasContext: ctx as unknown as CanvasRenderingContext2D,
+			viewport,
+			canvas: canvas as unknown as HTMLCanvasElement,
+		}).promise
+
+		const blob = await canvas.convertToBlob({
+			type: "image/jpeg",
+			quality: jpegQuality,
+		})
+		const imgBytes = new Uint8Array(await blob.arrayBuffer())
+		const image = await dest.embedJpg(imgBytes)
+		const destPage = dest.addPage([viewport.width, viewport.height])
+		destPage.drawImage(image, {
+			x: 0,
+			y: 0,
+			width: viewport.width,
+			height: viewport.height,
+		})
+	}
+
+	const compressedBytes = await dest.save({ useObjectStreams: true })
 	return {
 		blob: pdfBlob(new Uint8Array(compressedBytes)),
 		name: `${file.name.replace(/\.pdf$/i, "")}-compressed.pdf`,
