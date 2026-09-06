@@ -48,7 +48,6 @@ describe("ScannerPanel", () => {
 		})
 
 		render(<ScannerPanel onResultsChange={vi.fn()} onErrorChange={vi.fn()} />)
-		fireEvent.click(screen.getByRole("button", { name: "Start camera" }))
 
 		const preview = (await screen.findByTestId(
 			"scanner-preview",
@@ -241,7 +240,6 @@ describe("ScannerPanel", () => {
 		vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue(undefined)
 
 		render(<ScannerPanel onResultsChange={vi.fn()} onErrorChange={vi.fn()} />)
-		fireEvent.click(screen.getByText("Start camera"))
 
 		return screen.findByTestId("scanner-preview").then((preview) => {
 			expect(preview.className).toContain("w-full")
@@ -312,38 +310,70 @@ describe("ScannerPanel", () => {
 
 		render(<ScannerPanel onResultsChange={vi.fn()} onErrorChange={vi.fn()} />)
 
-		// Before starting camera: check camera select options
-		const initialSelect = (await screen.findByTestId(
-			"scanner-camera-select",
-		)) as HTMLSelectElement
-		const optionValues = Array.from(initialSelect.options).map(
-			(opt) => opt.value,
-		)
-		expect(optionValues).not.toContain("user")
-		expect(optionValues).not.toContain("environment")
-		expect(optionValues).toEqual(["rear-cam-id", "front-cam-id"])
-
-		fireEvent.click(screen.getByText("Start camera"))
-
+		// Direct camera preview on mount
 		await screen.findByTestId("scanner-preview")
 		expect(screen.getByTestId("scanner-capture-page")).toBeTruthy()
 		expect(screen.getByTestId("scanner-flip-camera")).toBeTruthy()
+		expect(screen.getByTestId("scanner-add-images")).toBeTruthy()
 
-		// Live switch via active dropdown in viewfinder
-		const activeSelect = screen.getByTestId(
-			"scanner-camera-select-active",
-		) as HTMLSelectElement
+		// Camera selector inside the active viewfinder
+		const activeSelect = (await screen.findByTestId(
+			"scanner-camera-select",
+		)) as HTMLSelectElement
 		expect(activeSelect).toBeTruthy()
 		const activeOptionValues = Array.from(activeSelect.options).map(
 			(opt) => opt.value,
 		)
 		expect(activeOptionValues).toEqual(["rear-cam-id", "front-cam-id"])
 
+		// Live switch via camera select dropdown
 		fireEvent.change(activeSelect, { target: { value: "front-cam-id" } })
 		await waitFor(() => expect(getUserMediaMock).toHaveBeenCalledTimes(2))
 
 		// Live switch via flip button
 		fireEvent.click(screen.getByTestId("scanner-flip-camera"))
 		await waitFor(() => expect(getUserMediaMock).toHaveBeenCalledTimes(3))
+
+		// Closing camera shows fallback
+		fireEvent.click(screen.getByTestId("scanner-close-camera"))
+		expect(await screen.findByText("Camera is off")).toBeTruthy()
+		expect(screen.getByTestId("scanner-open-camera")).toBeTruthy()
+		expect(screen.getByTestId("scanner-add-images-fallback")).toBeTruthy()
+
+		// Reopening camera restarts preview
+		fireEvent.click(screen.getByTestId("scanner-open-camera"))
+		await waitFor(() => expect(getUserMediaMock).toHaveBeenCalledTimes(4))
+		expect(await screen.findByTestId("scanner-preview")).toBeTruthy()
+	})
+
+	it("adds images from file input via the camera UI dock button", async () => {
+		const stream = {
+			getTracks: () => [{ stop: vi.fn() }],
+		} as unknown as MediaStream
+		Object.defineProperty(navigator, "mediaDevices", {
+			configurable: true,
+			value: { getUserMedia: vi.fn(async () => stream) },
+		})
+
+		render(<ScannerPanel onResultsChange={vi.fn()} onErrorChange={vi.fn()} />)
+
+		await screen.findByTestId("scanner-preview")
+
+		const fileInput = screen.getByTestId(
+			"scanner-image-input",
+		) as HTMLInputElement
+		const clickSpy = vi.spyOn(fileInput, "click")
+
+		const addImagesBtn = screen.getByTestId("scanner-add-images")
+		fireEvent.click(addImagesBtn)
+		expect(clickSpy).toHaveBeenCalled()
+
+		fireEvent.change(fileInput, {
+			target: {
+				files: [new File(["page1"], "page1.jpg", { type: "image/jpeg" })],
+			},
+		})
+
+		expect(await screen.findByText(/1\. page1\.jpg/)).toBeTruthy()
 	})
 })

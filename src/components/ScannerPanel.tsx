@@ -44,7 +44,7 @@ export default function ScannerPanel({
 	const fileInputRef = useRef<HTMLInputElement>(null)
 	const streamRef = useRef<MediaStream | null>(null)
 	const [pages, setPages] = useState<File[]>([])
-	const [cameraActive, setCameraActive] = useState(false)
+	const [cameraActive, setCameraActive] = useState(true)
 	const [cameraAspectRatio, setCameraAspectRatio] = useState<string | null>(
 		null,
 	)
@@ -54,6 +54,17 @@ export default function ScannerPanel({
 	const [videoDevices, setVideoDevices] = useState<CameraDevice[]>([])
 	const [facingMode, setFacingMode] = useState<CameraFacingMode>("environment")
 	const [selectedDeviceId, setSelectedDeviceId] = useState("")
+
+	const selectedDeviceIdRef = useRef(selectedDeviceId)
+	const facingModeRef = useRef(facingMode)
+
+	useEffect(() => {
+		selectedDeviceIdRef.current = selectedDeviceId
+	}, [selectedDeviceId])
+
+	useEffect(() => {
+		facingModeRef.current = facingMode
+	}, [facingMode])
 
 	const refreshDevices = useCallback(async () => {
 		const devices = await enumerateVideoDevices()
@@ -96,7 +107,75 @@ export default function ScannerPanel({
 		setCameraAspectRatio(null)
 	}, [])
 
-	useEffect(() => stopCamera, [stopCamera])
+	const startCamera = useCallback(
+		async (targetDeviceId?: string, targetFacing?: CameraFacingMode) => {
+			onErrorChange(null)
+			if (!navigator.mediaDevices?.getUserMedia) {
+				setCameraActive(false)
+				onErrorChange("Camera capture is not available in this browser.")
+				return
+			}
+			const deviceId = targetDeviceId ?? selectedDeviceIdRef.current
+			const facing = targetFacing ?? facingModeRef.current
+			try {
+				if (streamRef.current) {
+					for (const track of streamRef.current.getTracks()) {
+						track.stop()
+					}
+					streamRef.current = null
+				}
+				const stream = await requestCameraStream(
+					deviceId || null,
+					facing,
+					false,
+				)
+				streamRef.current = stream
+				const track = stream.getVideoTracks?.()?.[0]
+				const settings = track?.getSettings?.()
+				if (settings?.width && settings?.height) {
+					setCameraAspectRatio(`${settings.width} / ${settings.height}`)
+				}
+				if (
+					settings?.facingMode === "user" ||
+					settings?.facingMode === "environment"
+				) {
+					setFacingMode(settings.facingMode)
+					facingModeRef.current = settings.facingMode
+				}
+				if (settings?.deviceId) {
+					setSelectedDeviceId(settings.deviceId)
+					selectedDeviceIdRef.current = settings.deviceId
+				}
+				if (videoRef.current) {
+					videoRef.current.muted = true
+					videoRef.current.playsInline = true
+					videoRef.current.srcObject = stream
+					void videoRef.current.play().catch(() => undefined)
+					if (videoRef.current.videoWidth && videoRef.current.videoHeight) {
+						updateCameraAspectRatio(videoRef.current)
+					}
+				}
+				setPreviewReady(true)
+				setCameraActive(true)
+				void refreshDevices()
+			} catch (error) {
+				setCameraActive(false)
+				onErrorChange(
+					error instanceof Error
+						? `Could not start camera: ${error.message}`
+						: "Could not start camera.",
+				)
+			}
+		},
+		[onErrorChange, refreshDevices, updateCameraAspectRatio],
+	)
+
+	useEffect(() => {
+		void startCamera()
+		return () => {
+			stopCamera()
+		}
+	}, [startCamera, stopCamera])
 
 	useEffect(() => {
 		if (!cameraActive || !streamRef.current || !videoRef.current) return
@@ -110,58 +189,6 @@ export default function ScannerPanel({
 			updateCameraAspectRatio(video)
 		}
 	}, [cameraActive, updateCameraAspectRatio])
-
-	const startCamera = async (
-		targetDeviceId = selectedDeviceId,
-		targetFacing = facingMode,
-	) => {
-		onErrorChange(null)
-		if (!navigator.mediaDevices?.getUserMedia) {
-			onErrorChange("Camera capture is not available in this browser.")
-			return
-		}
-		try {
-			stopCamera()
-			const stream = await requestCameraStream(
-				targetDeviceId || null,
-				targetFacing,
-				false,
-			)
-			streamRef.current = stream
-			const track = stream.getVideoTracks?.()?.[0]
-			const settings = track?.getSettings?.()
-			if (settings?.width && settings?.height) {
-				setCameraAspectRatio(`${settings.width} / ${settings.height}`)
-			}
-			if (
-				settings?.facingMode === "user" ||
-				settings?.facingMode === "environment"
-			) {
-				setFacingMode(settings.facingMode)
-			}
-			if (settings?.deviceId) {
-				setSelectedDeviceId(settings.deviceId)
-			}
-			if (videoRef.current) {
-				videoRef.current.muted = true
-				videoRef.current.playsInline = true
-				videoRef.current.srcObject = stream
-				void videoRef.current.play().catch(() => undefined)
-				if (videoRef.current.videoWidth && videoRef.current.videoHeight) {
-					updateCameraAspectRatio(videoRef.current)
-				}
-			}
-			setPreviewReady(true)
-			setCameraActive(true)
-			void refreshDevices()
-		} catch (error) {
-			onErrorChange(
-				error instanceof Error
-					? `Could not start camera: ${error.message}`
-					: "Could not start camera.",
-			)
-		}
-	}
 
 	const flipCamera = async () => {
 		if (videoDevices.length > 1) {
@@ -315,49 +342,35 @@ export default function ScannerPanel({
 				/>
 
 				{!cameraActive ? (
-					<div className="flex flex-wrap items-center justify-between gap-3">
-						<div className="flex flex-wrap items-center gap-2">
+					<div className="flex flex-col items-center justify-center gap-3 rounded-2xl border border-dashed border-base-content/20 bg-base-200/40 p-8 text-center">
+						<div className="flex h-12 w-12 items-center justify-center rounded-full bg-base-200 text-base-content/60">
+							<Icon name="camera" size={24} />
+						</div>
+						<div className="space-y-1">
+							<p className="font-semibold text-base-content">Camera is off</p>
+							<p className="text-xs text-base-content/60">
+								Start camera to scan pages or select images from your device
+							</p>
+						</div>
+						<div className="flex flex-wrap items-center gap-2 pt-2">
 							<button
 								type="button"
 								className="btn btn-primary btn-sm rounded-full gap-2 px-4 shadow-sm"
-								onClick={() => startCamera()}
+								onClick={() => void startCamera()}
+								data-testid="scanner-open-camera"
 							>
 								<Icon name="camera" size={16} />
-								<span>Start camera</span>
+								<span>Open camera</span>
 							</button>
 							<button
 								type="button"
 								className="btn btn-outline btn-sm rounded-full gap-2 px-4"
 								onClick={() => fileInputRef.current?.click()}
+								data-testid="scanner-add-images-fallback"
 							>
 								<Icon name="photo-plus" size={16} />
 								<span>Add images</span>
 							</button>
-						</div>
-
-						{/* Camera selector before starting camera */}
-						<div className="flex items-center gap-1.5 text-xs text-base-content/70">
-							<Icon name="camera" size={14} className="opacity-60" />
-							<select
-								aria-label="Select camera"
-								data-testid="scanner-camera-select"
-								className="select select-bordered select-xs rounded-full font-medium"
-								value={selectedDeviceId || (videoDevices[0]?.deviceId ?? "")}
-								onChange={(e) => void handleCameraSelect(e.target.value)}
-							>
-								{videoDevices.length === 0 ? (
-									<option value="">Default Camera</option>
-								) : (
-									videoDevices.map((device, idx) => (
-										<option
-											key={device.deviceId || idx}
-											value={device.deviceId}
-										>
-											{device.label}
-										</option>
-									))
-								)}
-							</select>
 						</div>
 					</div>
 				) : (
@@ -370,7 +383,7 @@ export default function ScannerPanel({
 									<Icon name="camera" size={14} className="text-white/80" />
 									<select
 										aria-label="Select camera"
-										data-testid="scanner-camera-select-active"
+										data-testid="scanner-camera-select"
 										className="bg-transparent text-xs font-semibold text-white focus:outline-none cursor-pointer pr-1"
 										value={
 											selectedDeviceId || (videoDevices[0]?.deviceId ?? "")
@@ -404,6 +417,7 @@ export default function ScannerPanel({
 									onClick={stopCamera}
 									aria-label="Close camera"
 									title="Close camera"
+									data-testid="scanner-close-camera"
 								>
 									<Icon name="close" size={14} />
 								</button>
@@ -444,6 +458,7 @@ export default function ScannerPanel({
 									onClick={() => fileInputRef.current?.click()}
 									aria-label="Add images"
 									title="Add images from files"
+									data-testid="scanner-add-images"
 								>
 									<Icon name="photo-plus" size={22} />
 									{pages.length > 0 && (
