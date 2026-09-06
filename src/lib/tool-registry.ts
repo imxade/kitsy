@@ -460,12 +460,23 @@ const tools: ToolDefinition[] = [
 				type: "checkbox",
 				default: false,
 			},
+			{
+				id: "splitPosition",
+				label: "Split position",
+				type: "select",
+				options: [
+					{ label: "Before matching page", value: "before" },
+					{ label: "After matching page", value: "after" },
+				],
+				default: "before",
+			},
 		],
 		process: async (files, options) =>
 			await splitPdfByText(
 				files[0],
 				String(options.phrase ?? ""),
 				Boolean(options.caseSensitive),
+				String(options.splitPosition) === "after" ? "after" : "before",
 			),
 	},
 	{

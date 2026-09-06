@@ -233,11 +233,48 @@ async function copyPageRanges(
 	return results
 }
 
-/** Split before every later page whose selectable text matches the phrase. */
+function normalizeTextForSearch(text: string): string {
+	return text
+		.normalize("NFKD")
+		.replace(/[\u00AD\u200B\uFEFF]/g, "")
+		.replace(/\s+/g, " ")
+		.trim()
+}
+
+function matchesPageText(
+	pageText: string,
+	query: string,
+	caseSensitive: boolean,
+): boolean {
+	const normPage = normalizeTextForSearch(pageText)
+	const normQuery = normalizeTextForSearch(query)
+	const candidate = caseSensitive ? normPage : normPage.toLowerCase()
+	const expected = caseSensitive ? normQuery : normQuery.toLowerCase()
+
+	// 1. Direct substring match
+	if (candidate.includes(expected)) return true
+
+	// 2. De-hyphenated match (handles words wrapped across line breaks like "Trace-\nMonkey")
+	const dehyphenatedCandidate = candidate.replace(/-\s+/g, "")
+	const dehyphenatedExpected = expected.replace(/-\s+/g, "")
+	if (dehyphenatedCandidate.includes(dehyphenatedExpected)) return true
+
+	// 3. Spaceless match (handles kerning/chunk splits like "2 nd" or "I nvoice")
+	const spacelessExpected = expected.replace(/\s+/g, "")
+	if (spacelessExpected.length >= 2) {
+		const spacelessCandidate = candidate.replace(/\s+/g, "")
+		if (spacelessCandidate.includes(spacelessExpected)) return true
+	}
+
+	return false
+}
+
+/** Split before or after pages whose selectable text matches the phrase. */
 export async function splitPdfByText(
 	file: File,
 	phrase: string,
 	caseSensitive = false,
+	splitPosition: "before" | "after" = "before",
 ): Promise<ProcessedFile[]> {
 	const query = phrase.trim()
 	if (!query) throw new Error("Enter text to use as the split marker")
@@ -247,8 +284,7 @@ export async function splitPdfByText(
 		useWorkerFetch: false,
 	}).promise
 	try {
-		const expected = caseSensitive ? query : query.toLocaleLowerCase()
-		const starts: number[] = []
+		const matchingPages: number[] = []
 		for (let pageNumber = 1; pageNumber <= document.numPages; pageNumber++) {
 			const page = await document.getPage(pageNumber)
 			const text = (await page.getTextContent()).items
@@ -256,17 +292,73 @@ export async function splitPdfByText(
 				.join(" ")
 				.replace(/\s+/g, " ")
 				.trim()
-			const candidate = caseSensitive ? text : text.toLocaleLowerCase()
-			if (candidate.includes(expected) && pageNumber > 1)
-				starts.push(pageNumber - 1)
+			if (matchesPageText(text, query, caseSensitive)) {
+				matchingPages.push(pageNumber)
+			}
 		}
+
+		if (matchingPages.length === 0) {
+			throw new Error(`No pages in this PDF match the text marker "${query}".`)
+		}
+
+		let starts: number[]
+		if (splitPosition === "after") {
+			starts = matchingPages
+				.filter((pageNumber) => pageNumber < document.numPages)
+				.map((pageNumber) => pageNumber)
+			if (starts.length === 0) {
+				if (
+					matchingPages.length === 1 &&
+					matchingPages[0] === document.numPages
+				) {
+					throw new Error(
+						`The text marker "${query}" was only found on the last page. Choose "Before matching page" to split before it.`,
+					)
+				}
+				throw new Error(
+					`No split points could be created after matching pages for "${query}".`,
+				)
+			}
+		} else {
+			starts = matchingPages
+				.filter((pageNumber) => pageNumber > 1)
+				.map((pageNumber) => pageNumber - 1)
+			if (starts.length === 0) {
+				if (matchingPages.length === 1 && matchingPages[0] === 1) {
+					throw new Error(
+						`The text marker "${query}" was only found on page 1. Choose "After matching page" as the split position to split after page 1.`,
+					)
+				}
+				throw new Error(
+					`No split points could be created before matching pages for "${query}".`,
+				)
+			}
+		}
+
 		return await copyPageRanges(file, starts, "text-split")
 	} finally {
 		await document.destroy?.()
 	}
 }
 
-/** Split at resolvable top-level PDF outline destinations. */
+interface OutlineNode {
+	title?: string
+	dest?: string | unknown[] | null
+	items?: OutlineNode[]
+}
+
+function flattenOutline(items: OutlineNode[]): OutlineNode[] {
+	const result: OutlineNode[] = []
+	for (const item of items) {
+		result.push(item)
+		if (item.items && Array.isArray(item.items) && item.items.length > 0) {
+			result.push(...flattenOutline(item.items))
+		}
+	}
+	return result
+}
+
+/** Split at resolvable PDF outline destinations. */
 export async function splitPdfByBookmarks(
 	file: File,
 ): Promise<ProcessedFile[]> {
@@ -278,15 +370,23 @@ export async function splitPdfByBookmarks(
 	try {
 		const outline = await document.getOutline()
 		if (!outline?.length) throw new Error("This PDF has no usable bookmarks")
+		const allItems = flattenOutline(outline)
 		const starts: number[] = []
-		for (const item of outline) {
+		let totalDestinations = 0
+		for (const item of allItems) {
 			const destination =
 				typeof item.dest === "string"
 					? await document.getDestination(item.dest)
 					: item.dest
 			if (!destination?.[0]) continue
+			totalDestinations++
 			const pageIndex = await document.getPageIndex(destination[0])
 			if (pageIndex > 0) starts.push(pageIndex)
+		}
+		if (totalDestinations > 0 && starts.length === 0) {
+			throw new Error(
+				"All bookmarks in this PDF point to page 1, so no split points were found",
+			)
 		}
 		return await copyPageRanges(file, starts, "bookmark-split")
 	} finally {
@@ -321,6 +421,18 @@ export async function flipPdf(
 	}
 }
 
+/** Sanitize text to characters encodable by WinAnsi / StandardFonts.Helvetica */
+function sanitizeWinAnsiText(text: string): string {
+	return text
+		.replace(/[\u2018\u2019]/g, "'")
+		.replace(/[\u201C\u201D]/g, '"')
+		.replace(/[\u2013\u2014]/g, "-")
+		.replace(/\u2026/g, "...")
+		.replace(/\u2022/g, "*")
+		.replace(/[\u2713\u2714]/g, "[x]")
+		.replace(/[\u2190\u2192]/g, "->")
+}
+
 /** Add a clearly-labelled text overlay; this does not edit existing PDF text. */
 export async function addPdfTextOverlay(
 	file: File,
@@ -341,7 +453,8 @@ export async function addPdfTextOverlay(
 	}
 	const font = await document.embedFont(StandardFonts.Helvetica)
 	const color = parseHexColor(colorHex)
-	document.getPage(pageIndex).drawText(text, {
+	const sanitized = sanitizeWinAnsiText(text)
+	document.getPage(pageIndex).drawText(sanitized, {
 		x: Math.max(0, x),
 		y: Math.max(0, y),
 		size: Math.max(1, fontSize),

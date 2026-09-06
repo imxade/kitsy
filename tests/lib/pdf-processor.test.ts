@@ -127,6 +127,55 @@ describe("pdf-processor", () => {
 		}
 	})
 
+	it("splitPdfByText splits after matching page when splitPosition is 'after'", async () => {
+		const doc = await PDFDocument.create()
+		const p1 = doc.addPage([400, 400])
+		p1.drawText("Invoice Header", { x: 50, y: 350, size: 14 })
+		const p2 = doc.addPage([400, 400])
+		p2.drawText("Invoice Details", { x: 50, y: 350, size: 14 })
+		const source = new File([await doc.save()], "invoice.pdf", {
+			type: "application/pdf",
+		})
+
+		const results = await splitPdfByText(
+			source,
+			"Invoice Header",
+			false,
+			"after",
+		)
+		expect(results).toHaveLength(2)
+		expect(results[0].name).toBe("invoice-text-split-1.pdf")
+		expect(results[1].name).toBe("invoice-text-split-2.pdf")
+		const doc1 = await PDFDocument.load(await results[0].blob.arrayBuffer())
+		const doc2 = await PDFDocument.load(await results[1].blob.arrayBuffer())
+		expect(doc1.getPageCount()).toBe(1)
+		expect(doc2.getPageCount()).toBe(1)
+	})
+
+	it("splitPdfByText gives clear error when marker is only on page 1 with 'before'", async () => {
+		const doc = await PDFDocument.create()
+		const p1 = doc.addPage([400, 400])
+		p1.drawText("Single Page Marker", { x: 50, y: 350, size: 14 })
+		const p2 = doc.addPage([400, 400])
+		p2.drawText("Page 2 Content", { x: 50, y: 350, size: 14 })
+		const source = new File([await doc.save()], "single.pdf", {
+			type: "application/pdf",
+		})
+
+		await expect(
+			splitPdfByText(source, "Single Page Marker", false, "before"),
+		).rejects.toThrow(
+			'Choose "After matching page" as the split position to split after page 1',
+		)
+	})
+
+	it("splitPdfByText gives clear error when text is not found anywhere in document", async () => {
+		const source = await createDummyPdf(2, "Content")
+		await expect(splitPdfByText(source, "NonexistentMarker")).rejects.toThrow(
+			'No pages in this PDF match the text marker "NonexistentMarker".',
+		)
+	})
+
 	it("splitPdfByBookmarks gives a clear error when outlines are absent", async () => {
 		const source = await createDummyPdf(2, "No outline")
 		await expect(splitPdfByBookmarks(source)).rejects.toThrow(
@@ -157,6 +206,21 @@ describe("pdf-processor", () => {
 		const document = await PDFDocument.load(await result.blob.arrayBuffer())
 
 		expect(result.name).toBe("test-with-text.pdf")
+		expect(document.getPageCount()).toBe(1)
+	})
+
+	it("addPdfTextOverlay sanitizes non-WinAnsi characters gracefully", async () => {
+		const source = await createDummyPdf(1, "Source")
+		const result = await addPdfTextOverlay(
+			source,
+			"“Approved” ✓ — Notes…",
+			1,
+			72,
+			72,
+			14,
+			"#000000",
+		)
+		const document = await PDFDocument.load(await result.blob.arrayBuffer())
 		expect(document.getPageCount()).toBe(1)
 	})
 

@@ -21,6 +21,51 @@ export async function createDummyPdf(
 	return new File([bytes.slice()], "test.pdf", { type: "application/pdf" })
 }
 
+/** Create a minimal PDF with outline bookmarks pointing to different pages. */
+export async function createDummyPdfWithBookmarks(): Promise<File> {
+	const { PDFHexString, PDFName } = await import("pdf-lib")
+	const doc = await PDFDocument.create()
+	const p1 = doc.addPage([612, 792])
+	p1.drawText("Chapter 1", { x: 50, y: 700, size: 14 })
+	const p2 = doc.addPage([612, 792])
+	p2.drawText("Chapter 2", { x: 50, y: 700, size: 14 })
+	const p3 = doc.addPage([612, 792])
+	p3.drawText("Chapter 3", { x: 50, y: 700, size: 14 })
+
+	const { context } = doc
+	const item1Ref = context.nextRef()
+	const item2Ref = context.nextRef()
+	const outlinesRef = context.nextRef()
+
+	const outlinesDict = context.obj({
+		Type: "Outlines",
+		First: item1Ref,
+		Last: item2Ref,
+		Count: 2,
+	})
+	context.assign(outlinesRef, outlinesDict)
+
+	const item1 = context.obj({
+		Title: PDFHexString.fromText("Chapter 1"),
+		Parent: outlinesRef,
+		Next: item2Ref,
+		Dest: [p1.ref, PDFName.of("Fit")],
+	})
+	context.assign(item1Ref, item1)
+
+	const item2 = context.obj({
+		Title: PDFHexString.fromText("Chapter 2"),
+		Parent: outlinesRef,
+		Prev: item1Ref,
+		Dest: [p2.ref, PDFName.of("Fit")],
+	})
+	context.assign(item2Ref, item2)
+
+	doc.catalog.set(PDFName.of("Outlines"), outlinesRef)
+	const bytes = await doc.save()
+	return new File([bytes.slice()], "bookmarks.pdf", { type: "application/pdf" })
+}
+
 /** Create a minimal 1x1 PNG file. */
 export function createDummyImage(name = "test.png", type = "image/png"): File {
 	// Minimal 1x1 red pixel PNG
