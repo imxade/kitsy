@@ -18,7 +18,11 @@ import {
 } from "./image-processor"
 import {
 	mergePdfs,
+	alternateMixPdfs,
 	splitPdf,
+	splitPdfInHalf,
+	splitPdfByText,
+	splitPdfByBookmarks,
 	extractPdfPages,
 	deletePdfPages,
 	reorderPdfPages,
@@ -41,6 +45,12 @@ import {
 	compressPdf,
 	addPdfWatermark,
 	rotatePdf,
+	flipPdf,
+	addPdfTextOverlay,
+	comparePdfText,
+	fillPdfForm,
+	addPageNumbers,
+	pdfToMarkdown,
 	flattenPdf,
 	editPdfMetadata,
 	stripPdfMetadata,
@@ -111,6 +121,7 @@ export interface ToolDefinition {
 		| "collage"
 		| "text-overlay"
 		| "recorder"
+		| "scanner"
 		| "todo"
 	options: ToolOption[]
 	process: (
@@ -387,6 +398,18 @@ const tools: ToolDefinition[] = [
 		process: async (files) => [await mergePdfs(files)],
 	},
 	{
+		id: "pdf-alternate-mix",
+		name: "Alternate & Mix PDF",
+		description: "Interleave pages from two or more PDF files",
+		category: "pdf",
+		icon: "files",
+		acceptedExtensions: [".pdf"],
+		multiple: true,
+		keywords: ["interleave", "mix pages", "combine front back scans"],
+		options: [],
+		process: async (files) => [await alternateMixPdfs(files)],
+	},
+	{
 		id: "pdf-split",
 		name: "Split PDF",
 		description: "Extract individual pages from a PDF",
@@ -396,6 +419,55 @@ const tools: ToolDefinition[] = [
 		multiple: false,
 		options: [],
 		process: async (files) => await splitPdf(files[0]),
+	},
+	{
+		id: "pdf-split-half",
+		name: "Split PDF in Half",
+		description: "Split a PDF into two page-count halves",
+		category: "pdf",
+		icon: "scissors",
+		acceptedExtensions: [".pdf"],
+		multiple: false,
+		keywords: ["divide pdf", "two parts", "page count"],
+		options: [],
+		process: async (files) => await splitPdfInHalf(files[0]),
+	},
+	{
+		id: "pdf-split-bookmarks",
+		name: "Split PDF by Bookmarks",
+		description: "Split a PDF at its top-level bookmarks",
+		category: "pdf",
+		icon: "scissors",
+		acceptedExtensions: [".pdf"],
+		multiple: false,
+		keywords: ["outline", "chapters", "bookmarks"],
+		options: [],
+		process: async (files) => await splitPdfByBookmarks(files[0]),
+	},
+	{
+		id: "pdf-split-text",
+		name: "Split PDF by Text",
+		description: "Start a new PDF when selectable page text matches",
+		category: "pdf",
+		icon: "scissors",
+		acceptedExtensions: [".pdf"],
+		multiple: false,
+		keywords: ["text marker", "keyword", "separate pages"],
+		options: [
+			{ id: "phrase", label: "Text marker", type: "text", default: "" },
+			{
+				id: "caseSensitive",
+				label: "Match case",
+				type: "checkbox",
+				default: false,
+			},
+		],
+		process: async (files, options) =>
+			await splitPdfByText(
+				files[0],
+				String(options.phrase ?? ""),
+				Boolean(options.caseSensitive),
+			),
 	},
 	{
 		id: "pdf-extract-pages",
@@ -417,9 +489,7 @@ const tools: ToolDefinition[] = [
 		process: async (files, opts) => {
 			const range = String(opts.pageRange || "").trim()
 			if (!range) {
-				throw new Error(
-					"Enter a page range, e.g. 1,3-5 or 150-460",
-				)
+				throw new Error("Enter a page range, e.g. 1,3-5 or 150-460")
 			}
 			return [await extractPdfPages(files[0], range)]
 		},
@@ -1512,8 +1582,21 @@ const tools: ToolDefinition[] = [
 		options: [],
 		process: async () => [],
 	},
-
-	// ── PDF to PPTX ──
+	{
+		id: "scan-to-pdf",
+		name: "Scan to PDF",
+		description: "Capture camera pages or images and combine them into a PDF",
+		category: "pdf",
+		icon: "pdf",
+		acceptedExtensions: [".jpg", ".jpeg", ".png", ".webp"],
+		producedExtensions: [".pdf"],
+		multiple: true,
+		requiresFiles: false,
+		uiMode: "scanner",
+		keywords: ["camera scan", "document scanner", "images to pdf"],
+		options: [],
+		process: async () => [],
+	},
 
 	// ── File Utilities ──
 	{
@@ -1928,6 +2011,174 @@ const tools: ToolDefinition[] = [
 		],
 		process: async (files, opts) =>
 			batch(files, (f) => rotatePdf(f, Number(opts.angle))),
+	},
+	{
+		id: "pdf-flip",
+		name: "Flip PDF",
+		description: "Mirror every PDF page horizontally or vertically",
+		category: "pdf",
+		icon: "rotate",
+		acceptedExtensions: [".pdf"],
+		multiple: true,
+		keywords: ["mirror", "reverse", "flip pages"],
+		options: [
+			{
+				id: "direction",
+				label: "Flip direction",
+				type: "select",
+				options: [
+					{ label: "Horizontal", value: "horizontal" },
+					{ label: "Vertical", value: "vertical" },
+				],
+				default: "horizontal",
+			},
+		],
+		process: async (files, options) =>
+			batch(files, (file) =>
+				flipPdf(
+					file,
+					String(options.direction) === "vertical" ? "vertical" : "horizontal",
+				),
+			),
+	},
+	{
+		id: "pdf-page-numbers",
+		name: "Add PDF Page Numbers",
+		description: "Stamp page numbers on every page of a PDF",
+		category: "pdf",
+		icon: "text",
+		acceptedExtensions: [".pdf"],
+		multiple: true,
+		keywords: ["number pages", "pagination", "page labels"],
+		options: [
+			{
+				id: "position",
+				label: "Position",
+				type: "select",
+				options: [
+					{ label: "Bottom center", value: "bottom-center" },
+					{ label: "Bottom left", value: "bottom-left" },
+					{ label: "Bottom right", value: "bottom-right" },
+					{ label: "Top center", value: "top-center" },
+				],
+				default: "bottom-center",
+			},
+		],
+		process: async (files, options) =>
+			batch(files, (file) => addPageNumbers(file, String(options.position))),
+	},
+	{
+		id: "pdf-extract-text",
+		name: "Extract PDF Text",
+		description: "Export selectable PDF text as Markdown with page headings",
+		category: "pdf",
+		icon: "text",
+		acceptedExtensions: [".pdf"],
+		producedExtensions: [".md"],
+		multiple: true,
+		keywords: ["copy text", "pdf to text", "markdown"],
+		options: [],
+		process: async (files) => batch(files, (file) => pdfToMarkdown(file)),
+	},
+	{
+		id: "pdf-compare-text",
+		name: "Compare PDF Text",
+		description: "Report pages with different selectable text layers",
+		category: "pdf",
+		icon: "files",
+		acceptedExtensions: [".pdf"],
+		producedExtensions: [".json"],
+		multiple: true,
+		keywords: ["compare", "diff", "review documents"],
+		options: [],
+		process: async (files) => {
+			if (files.length !== 2) throw new Error("Select exactly two PDF files")
+			return [await comparePdfText(files[0], files[1])]
+		},
+	},
+	{
+		id: "pdf-add-content",
+		name: "Add PDF Text",
+		description: "Add a text overlay without changing existing PDF text",
+		category: "pdf",
+		icon: "text",
+		acceptedExtensions: [".pdf"],
+		multiple: false,
+		keywords: ["overlay", "add text", "correct pdf", "annotation"],
+		options: [
+			{ id: "text", label: "Text", type: "text", default: "" },
+			{ id: "page", label: "Page", type: "number", default: 1, min: 1 },
+			{
+				id: "x",
+				label: "X position (pt)",
+				type: "number",
+				default: 72,
+				min: 0,
+			},
+			{
+				id: "y",
+				label: "Y position (pt)",
+				type: "number",
+				default: 72,
+				min: 0,
+			},
+			{
+				id: "fontSize",
+				label: "Font size (pt)",
+				type: "number",
+				default: 14,
+				min: 1,
+				max: 144,
+			},
+			{ id: "color", label: "Text color", type: "color", default: "#000000" },
+		],
+		process: async (files, options) => [
+			await addPdfTextOverlay(
+				files[0],
+				String(options.text ?? ""),
+				Number(options.page),
+				Number(options.x),
+				Number(options.y),
+				Number(options.fontSize),
+				String(options.color),
+			),
+		],
+	},
+	{
+		id: "pdf-fill-form",
+		name: "Fill PDF Form",
+		description: "Fill standard AcroForm fields with a JSON value map",
+		category: "pdf",
+		icon: "text",
+		acceptedExtensions: [".pdf"],
+		multiple: false,
+		keywords: ["acroform", "fill fields", "form pdf"],
+		options: [
+			{
+				id: "values",
+				label: "Field values (JSON)",
+				type: "text",
+				default: "{}",
+			},
+			{
+				id: "flatten",
+				label: "Flatten fields after filling",
+				type: "checkbox",
+				default: false,
+			},
+		],
+		process: async (files, options) => {
+			let values: Record<string, string | boolean | string[]>
+			try {
+				values = JSON.parse(String(options.values ?? "{}"))
+			} catch {
+				throw new Error("Field values must be a valid JSON object")
+			}
+			if (!values || Array.isArray(values) || typeof values !== "object") {
+				throw new Error("Field values must be a JSON object")
+			}
+			return [await fillPdfForm(files[0], values, Boolean(options.flatten))]
+		},
 	},
 	{
 		id: "pdf-flatten",

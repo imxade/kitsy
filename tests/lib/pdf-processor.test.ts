@@ -3,7 +3,15 @@ import { PDFDocument } from "pdf-lib"
 import forge from "node-forge"
 import {
 	mergePdfs,
+	alternateMixPdfs,
 	splitPdf,
+	splitPdfInHalf,
+	splitPdfByText,
+	splitPdfByBookmarks,
+	flipPdf,
+	addPdfTextOverlay,
+	comparePdfText,
+	fillPdfForm,
 	deletePdfPages,
 	reorderPdfPages,
 	extractPdfPages,
@@ -80,6 +88,109 @@ describe("pdf-processor", () => {
 			expect(results[i].name).toBe(`page-${i + 1}.pdf`)
 			expect(results[i].blob.type).toBe("application/pdf")
 		}
+	})
+
+	it("alternateMixPdfs interleaves source pages", async () => {
+		const first = await createDummyPdf(2, "First")
+		const second = await createDummyPdf(1, "Second")
+		const result = await alternateMixPdfs([first, second])
+		const document = await PDFDocument.load(await result.blob.arrayBuffer())
+
+		expect(result.name).toBe("alternated.pdf")
+		expect(document.getPageCount()).toBe(3)
+	})
+
+	it("splitPdfInHalf creates two valid page-count halves", async () => {
+		const pdf = await createDummyPdf(5, "Halves")
+		const results = await splitPdfInHalf(pdf)
+
+		expect(results).toHaveLength(2)
+		expect(
+			await PDFDocument.load(await results[0].blob.arrayBuffer()).then((doc) =>
+				doc.getPageCount(),
+			),
+		).toBe(3)
+		expect(
+			await PDFDocument.load(await results[1].blob.arrayBuffer()).then((doc) =>
+				doc.getPageCount(),
+			),
+		).toBe(2)
+	})
+
+	it("splitPdfByText splits on later matching text-layer pages", async () => {
+		const source = await createDummyPdf(3, "Marker")
+		const results = await splitPdfByText(source, "Marker")
+
+		expect(results).toHaveLength(3)
+		for (const result of results) {
+			const document = await PDFDocument.load(await result.blob.arrayBuffer())
+			expect(document.getPageCount()).toBe(1)
+		}
+	})
+
+	it("splitPdfByBookmarks gives a clear error when outlines are absent", async () => {
+		const source = await createDummyPdf(2, "No outline")
+		await expect(splitPdfByBookmarks(source)).rejects.toThrow(
+			"no usable bookmarks",
+		)
+	})
+
+	it("flipPdf produces a valid mirrored PDF", async () => {
+		const source = await createDummyPdf(2, "Flip")
+		const result = await flipPdf(source, "horizontal")
+		const document = await PDFDocument.load(await result.blob.arrayBuffer())
+
+		expect(result.name).toBe("test-flipped-horizontal.pdf")
+		expect(document.getPageCount()).toBe(2)
+	})
+
+	it("addPdfTextOverlay produces a valid PDF without editing source text", async () => {
+		const source = await createDummyPdf(1, "Source")
+		const result = await addPdfTextOverlay(
+			source,
+			"Added locally",
+			1,
+			72,
+			72,
+			14,
+			"#000000",
+		)
+		const document = await PDFDocument.load(await result.blob.arrayBuffer())
+
+		expect(result.name).toBe("test-with-text.pdf")
+		expect(document.getPageCount()).toBe(1)
+	})
+
+	it("comparePdfText reports changed text-layer pages", async () => {
+		const left = await createDummyPdf(1, "Left")
+		const right = await createDummyPdf(1, "Right")
+		const result = await comparePdfText(left, right)
+		const report = JSON.parse(await result.blob.text()) as {
+			changedPages: number[]
+		}
+
+		expect(result.name).toBe("pdf-text-comparison.json")
+		expect(report.changedPages).toEqual([1])
+	})
+
+	it("fillPdfForm fills and flattens a standard AcroForm field", async () => {
+		const document = await PDFDocument.create()
+		document.addPage([612, 792])
+		const field = document.getForm().createTextField("name")
+		field.addToPage(document.getPage(0), {
+			x: 72,
+			y: 700,
+			width: 180,
+			height: 24,
+		})
+		const source = new File([(await document.save()).slice()], "form.pdf", {
+			type: "application/pdf",
+		})
+		const result = await fillPdfForm(source, { name: "Kitsy" }, true)
+		const output = await PDFDocument.load(await result.blob.arrayBuffer())
+
+		expect(result.name).toBe("form-filled.pdf")
+		expect(output.getForm().getFields()).toHaveLength(0)
 	})
 
 	it("deletePdfPages removes a page from a 3-page PDF", async () => {

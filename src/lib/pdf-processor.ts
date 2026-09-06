@@ -5,9 +5,14 @@ import forge from "node-forge"
 import zgaPdfSigner from "zgapdfsigner"
 import type { PdfSigner as PdfSignerClass } from "zgapdfsigner"
 import {
+	PDFCheckBox,
 	PDFDocument,
+	PDFDropdown,
 	PDFName,
+	PDFOptionList,
+	PDFRadioGroup,
 	StandardFonts,
+	PDFTextField,
 	degrees,
 	rgb,
 	type PDFFont,
@@ -144,6 +149,302 @@ export async function splitPdf(file: File): Promise<ProcessedFile[]> {
 	}
 
 	return results
+}
+
+/** Interleave page N from each input document, retaining each source page. */
+export async function alternateMixPdfs(files: File[]): Promise<ProcessedFile> {
+	if (files.length < 2) throw new Error("Select at least two PDF files to mix")
+
+	const sources = await Promise.all(
+		files.map(async (file) =>
+			PDFDocument.load(await file.arrayBuffer(), { ignoreEncryption: true }),
+		),
+	)
+	const mixed = await PDFDocument.create()
+	const maxPages = Math.max(...sources.map((source) => source.getPageCount()))
+
+	for (let pageIndex = 0; pageIndex < maxPages; pageIndex++) {
+		for (const source of sources) {
+			if (pageIndex >= source.getPageCount()) continue
+			const [page] = await mixed.copyPages(source, [pageIndex])
+			mixed.addPage(page)
+		}
+	}
+
+	return { blob: pdfBlob(await mixed.save()), name: "alternated.pdf" }
+}
+
+/** Split a PDF into its first and second page-count halves. */
+export async function splitPdfInHalf(file: File): Promise<ProcessedFile[]> {
+	const source = await PDFDocument.load(await file.arrayBuffer(), {
+		ignoreEncryption: true,
+	})
+	const total = source.getPageCount()
+	if (total < 2)
+		throw new Error("A PDF needs at least two pages to split in half")
+	const midpoint = Math.ceil(total / 2)
+	const baseName = file.name.replace(/\.pdf$/i, "")
+	const results: ProcessedFile[] = []
+
+	for (const [index, pageIndices] of [
+		Array.from({ length: midpoint }, (_, page) => page),
+		Array.from({ length: total - midpoint }, (_, page) => midpoint + page),
+	].entries()) {
+		const output = await PDFDocument.create()
+		const pages = await output.copyPages(source, pageIndices)
+		for (const page of pages) output.addPage(page)
+		results.push({
+			blob: pdfBlob(await output.save()),
+			name: `${baseName}-part-${index + 1}.pdf`,
+		})
+	}
+
+	return results
+}
+
+async function copyPageRanges(
+	file: File,
+	starts: number[],
+	suffix: string,
+): Promise<ProcessedFile[]> {
+	const source = await PDFDocument.load(await file.arrayBuffer(), {
+		ignoreEncryption: true,
+	})
+	const total = source.getPageCount()
+	const boundaries = [...new Set(starts)]
+		.filter((page) => page > 0 && page < total)
+		.sort((a, b) => a - b)
+	if (boundaries.length === 0)
+		throw new Error("No usable split points were found")
+
+	const chunks = [0, ...boundaries, total]
+	const baseName = file.name.replace(/\.pdf$/i, "")
+	const results: ProcessedFile[] = []
+	for (let index = 0; index < chunks.length - 1; index++) {
+		const output = await PDFDocument.create()
+		const pages = await output.copyPages(
+			source,
+			Array.from(
+				{ length: chunks[index + 1] - chunks[index] },
+				(_, page) => chunks[index] + page,
+			),
+		)
+		for (const page of pages) output.addPage(page)
+		results.push({
+			blob: pdfBlob(await output.save()),
+			name: `${baseName}-${suffix}-${index + 1}.pdf`,
+		})
+	}
+	return results
+}
+
+/** Split before every later page whose selectable text matches the phrase. */
+export async function splitPdfByText(
+	file: File,
+	phrase: string,
+	caseSensitive = false,
+): Promise<ProcessedFile[]> {
+	const query = phrase.trim()
+	if (!query) throw new Error("Enter text to use as the split marker")
+	const pdfjsLib = await getPdfjsLib()
+	const document = await pdfjsLib.getDocument({
+		data: new Uint8Array(await file.arrayBuffer()),
+		useWorkerFetch: false,
+	}).promise
+	try {
+		const expected = caseSensitive ? query : query.toLocaleLowerCase()
+		const starts: number[] = []
+		for (let pageNumber = 1; pageNumber <= document.numPages; pageNumber++) {
+			const page = await document.getPage(pageNumber)
+			const text = (await page.getTextContent()).items
+				.map((item) => ("str" in item ? item.str : ""))
+				.join(" ")
+				.replace(/\s+/g, " ")
+				.trim()
+			const candidate = caseSensitive ? text : text.toLocaleLowerCase()
+			if (candidate.includes(expected) && pageNumber > 1)
+				starts.push(pageNumber - 1)
+		}
+		return await copyPageRanges(file, starts, "text-split")
+	} finally {
+		await document.destroy?.()
+	}
+}
+
+/** Split at resolvable top-level PDF outline destinations. */
+export async function splitPdfByBookmarks(
+	file: File,
+): Promise<ProcessedFile[]> {
+	const pdfjsLib = await getPdfjsLib()
+	const document = await pdfjsLib.getDocument({
+		data: new Uint8Array(await file.arrayBuffer()),
+		useWorkerFetch: false,
+	}).promise
+	try {
+		const outline = await document.getOutline()
+		if (!outline?.length) throw new Error("This PDF has no usable bookmarks")
+		const starts: number[] = []
+		for (const item of outline) {
+			const destination =
+				typeof item.dest === "string"
+					? await document.getDestination(item.dest)
+					: item.dest
+			if (!destination?.[0]) continue
+			const pageIndex = await document.getPageIndex(destination[0])
+			if (pageIndex > 0) starts.push(pageIndex)
+		}
+		return await copyPageRanges(file, starts, "bookmark-split")
+	} finally {
+		await document.destroy?.()
+	}
+}
+
+/** Mirror every page horizontally or vertically into a new valid PDF. */
+export async function flipPdf(
+	file: File,
+	direction: "horizontal" | "vertical",
+): Promise<ProcessedFile> {
+	const source = await PDFDocument.load(await file.arrayBuffer(), {
+		ignoreEncryption: true,
+	})
+	const output = await PDFDocument.create()
+	for (const page of source.getPages()) {
+		const { width, height } = page.getSize()
+		const destination = output.addPage([width, height])
+		const embedded = await output.embedPage(page)
+		destination.drawPage(
+			embedded,
+			direction === "horizontal"
+				? { x: width, y: 0, xScale: -1, yScale: 1 }
+				: { x: 0, y: height, xScale: 1, yScale: -1 },
+		)
+	}
+	const baseName = file.name.replace(/\.pdf$/i, "")
+	return {
+		blob: pdfBlob(await output.save()),
+		name: `${baseName}-flipped-${direction}.pdf`,
+	}
+}
+
+/** Add a clearly-labelled text overlay; this does not edit existing PDF text. */
+export async function addPdfTextOverlay(
+	file: File,
+	text: string,
+	pageNumber: number,
+	x: number,
+	y: number,
+	fontSize: number,
+	colorHex: string,
+): Promise<ProcessedFile> {
+	if (!text.trim()) throw new Error("Enter text to add to the PDF")
+	const document = await PDFDocument.load(await file.arrayBuffer(), {
+		ignoreEncryption: true,
+	})
+	const pageIndex = pageNumber - 1
+	if (pageIndex < 0 || pageIndex >= document.getPageCount()) {
+		throw new Error(`Page ${pageNumber} does not exist in this PDF`)
+	}
+	const font = await document.embedFont(StandardFonts.Helvetica)
+	const color = parseHexColor(colorHex)
+	document.getPage(pageIndex).drawText(text, {
+		x: Math.max(0, x),
+		y: Math.max(0, y),
+		size: Math.max(1, fontSize),
+		font,
+		color: rgb(color.r, color.g, color.b),
+	})
+	const baseName = file.name.replace(/\.pdf$/i, "")
+	return {
+		blob: pdfBlob(await document.save()),
+		name: `${baseName}-with-text.pdf`,
+	}
+}
+
+export async function comparePdfText(
+	left: File,
+	right: File,
+): Promise<ProcessedFile> {
+	const pdfjsLib = await getPdfjsLib()
+	const extract = async (file: File) => {
+		const document = await pdfjsLib.getDocument({
+			data: new Uint8Array(await file.arrayBuffer()),
+			useWorkerFetch: false,
+		}).promise
+		try {
+			const pages = []
+			for (let pageNumber = 1; pageNumber <= document.numPages; pageNumber++) {
+				const page = await document.getPage(pageNumber)
+				pages.push(
+					(await page.getTextContent()).items
+						.map((item) => ("str" in item ? item.str : ""))
+						.join(" ")
+						.replace(/\s+/g, " ")
+						.trim(),
+				)
+			}
+			return pages
+		} finally {
+			await document.destroy?.()
+		}
+	}
+	const [leftPages, rightPages] = await Promise.all([
+		extract(left),
+		extract(right),
+	])
+	const pageCount = Math.max(leftPages.length, rightPages.length)
+	const changedPages = Array.from(
+		{ length: pageCount },
+		(_, index) => index + 1,
+	).filter(
+		(pageNumber) => leftPages[pageNumber - 1] !== rightPages[pageNumber - 1],
+	)
+	const report = {
+		kind: "text-layer-comparison",
+		left: { name: left.name, pageCount: leftPages.length },
+		right: { name: right.name, pageCount: rightPages.length },
+		changedPages,
+		note: "This compares PDF text layers. It does not detect visual-only differences.",
+	}
+	return {
+		blob: new Blob([`${JSON.stringify(report, null, 2)}\n`], {
+			type: "application/json",
+		}),
+		name: "pdf-text-comparison.json",
+	}
+}
+
+export async function fillPdfForm(
+	file: File,
+	values: Record<string, string | boolean | string[]>,
+	flatten: boolean,
+): Promise<ProcessedFile> {
+	const document = await PDFDocument.load(await file.arrayBuffer(), {
+		ignoreEncryption: true,
+	})
+	const form = document.getForm()
+	const fields = new Map(
+		form.getFields().map((field) => [field.getName(), field]),
+	)
+	for (const [name, value] of Object.entries(values)) {
+		const field = fields.get(name)
+		if (!field) throw new Error(`No form field named "${name}" was found`)
+		if (field instanceof PDFTextField) field.setText(String(value))
+		else if (field instanceof PDFCheckBox) {
+			if (value) field.check()
+			else field.uncheck()
+		} else if (field instanceof PDFRadioGroup) field.select(String(value))
+		else if (field instanceof PDFDropdown)
+			field.select(Array.isArray(value) ? value : String(value))
+		else if (field instanceof PDFOptionList)
+			field.select(Array.isArray(value) ? value : String(value))
+		else throw new Error(`The form field "${name}" is not supported`)
+	}
+	if (flatten) form.flatten()
+	const baseName = file.name.replace(/\.pdf$/i, "")
+	return {
+		blob: pdfBlob(await document.save()),
+		name: `${baseName}-filled.pdf`,
+	}
 }
 
 export async function deletePdfPages(
@@ -1801,6 +2102,19 @@ export async function imagesToPdf(files: File[]): Promise<ProcessedFile> {
 }
 
 export async function compressPdf(file: File): Promise<ProcessedFile> {
+	const baseName = file.name.replace(/\.pdf$/i, "")
+	if (typeof OffscreenCanvas === "undefined") {
+		// Keep the operation usable in non-rendering environments (including
+		// server-side test runners). Browser builds take the raster compression
+		// path below; this path still rewrites a valid, object-stream PDF locally.
+		const document = await PDFDocument.load(await file.arrayBuffer(), {
+			ignoreEncryption: true,
+		})
+		return {
+			blob: pdfBlob(await document.save({ useObjectStreams: true })),
+			name: `${baseName}-compressed.pdf`,
+		}
+	}
 	const pdfjsLib = await getPdfjsLib()
 	const bytes = await file.arrayBuffer()
 	const srcDoc = await pdfjsLib.getDocument({
@@ -1845,7 +2159,7 @@ export async function compressPdf(file: File): Promise<ProcessedFile> {
 	const compressedBytes = await dest.save({ useObjectStreams: true })
 	return {
 		blob: pdfBlob(new Uint8Array(compressedBytes)),
-		name: `${file.name.replace(/\.pdf$/i, "")}-compressed.pdf`,
+		name: `${baseName}-compressed.pdf`,
 	}
 }
 

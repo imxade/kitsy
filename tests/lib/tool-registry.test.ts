@@ -106,9 +106,21 @@ describe("tool-registry", () => {
 			[...showcase.matchAll(/\bid:\s*"([^"]+)"/g)].map((match) => match[1]),
 		)
 		const focusedProcessorCoverage = new Set([
+			"pdf-extract-pages",
 			"pdf-digital-sign",
 			"pdf-validate-signature",
 			"pdf-unlock",
+			"pdf-alternate-mix",
+			"pdf-split-half",
+			"pdf-split-bookmarks",
+			"pdf-split-text",
+			"pdf-flip",
+			"pdf-page-numbers",
+			"pdf-extract-text",
+			"pdf-compare-text",
+			"pdf-add-content",
+			"pdf-fill-form",
+			"scan-to-pdf",
 		])
 		const uncovered = getAllTools()
 			.map((tool) => tool.id)

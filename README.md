@@ -20,7 +20,7 @@ flowchart TD
     Router --> HomeRoute["/ Route"]
     Router --> ToolRoute["/tool/$id Route"]
     HomeRoute --> SearchRank["search.ts<br/>(intent-aware ranking)"]
-    ToolRoute --> Registry["tool-registry.ts<br/>(63 registered tools)"]
+    ToolRoute --> Registry["tool-registry.ts<br/>(registered local tools)"]
     Registry --> Processors["Processor Functions"]
     Processors --> ImgProc["image-processor.ts<br/>(OffscreenCanvas + imagetracerjs + IMG.LY background removal)"]
     Processors --> PdfProc["pdf-processor.ts<br/>(pdf-lib + pdfjs-dist + qpdf-wasm + signing libs)"]
@@ -64,7 +64,7 @@ All tools are objects in `src/lib/tool-registry.ts`. A tool definition contains:
 - `acceptedExtensions` and optional `producedExtensions`
 - `multiple`
 - optional `requiresFiles`
-- optional `uiMode`: `standard`, `auto-process`, `collage`, `recorder`, or `todo`
+- optional `uiMode`: `standard`, `auto-process`, `collage`, `recorder`, `scanner`, or `todo`
 - `options`
 - `process(files, options) => Promise<ProcessedFile[]>`
 
@@ -73,29 +73,12 @@ All tools are objects in `src/lib/tool-registry.ts`. A tool definition contains:
 - `auto-process`: runs immediately after file selection; currently used by `document-viewer`.
 - `collage`: renders `CollagePanel`.
 - `recorder`: renders `RecorderPanel`.
+- `scanner`: renders `ScannerPanel` for camera/image capture into a local PDF.
 - `todo`: renders `TodoListPanel`.
 
 `batch()` in the registry sequentially applies single-file processors to multi-file tools. Tools like PDF merge and image-to-PDF handle all files as one batch.
 
 `FileDropzone` accepts drag/drop and hidden file input selection. It builds the input `accept` string from `acceptedExtensions`, optional MIME types, and an extra `text/csv` hint for CSV selection on mobile browsers. `ToolCard` shows the first four accepted extensions visually, adds a `+N` badge for the rest, and includes an `sr-only` metadata block with the tool description and accepted extensions.
-
-### Registered Tools
-
-This list matches the current registry.
-
-| Category | Tools |
-| --- | --- |
-| Image | `image-convert`, `image-resize`, `image-rotate`, `image-crop`, `image-upscale`, `image-collage`, `image-blur`, `image-pixelate`, `image-add-text`, `image-remove-bg` |
-| PDF | `pdf-merge`, `pdf-split`, `pdf-delete-pages`, `pdf-reorder`, `pdf-header-footer`, `pdf-bates-numbering`, `pdf-add-blank-pages`, `pdf-remove-blank-pages`, `pdf-crop-pages`, `pdf-overlay-pages`, `pdf-resize-pages`, `pdf-n-up`, `pdf-page-dimensions`, `pdf-sign-visual`, `pdf-digital-sign`, `pdf-validate-signature`, `pdf-lock`, `pdf-unlock`, `pdf-images-to-pdf`, `pdf-to-images`, `pdf-compress`, `pdf-watermark`, `pdf-rotate`, `pdf-flatten`, `pdf-metadata`, `pdf-strip-metadata`, `pdf-remove-annotations` |
-| Video | `video-convert`, `video-trim`, `video-extract-audio`, `video-merge`, `video-audio-merge`, `video-mute`, `video-speed`, `screen-recorder`, `camera-recorder`, `video-resize`, `video-crop`, `video-watermark`, `video-extract-frames` |
-| Audio | `audio-convert`, `audio-trim`, `audio-merge`, `audio-recorder`, `audio-volume`, `audio-fade` |
-| Document | `document-viewer` |
-| File | `file-zip`, `file-unzip` |
-| Data | `data-csv-to-json`, `data-json-to-csv`, `data-format-json`, `todo-list` |
-
-Current count: 63 tools.
-
----
 
 ## Processing Responsibilities
 
@@ -109,13 +92,15 @@ AI background removal uses `@imgly/background-removal` with the `isnet_quint8` m
 
 `src/lib/pdf-processor.ts` uses:
 
-- `pdf-lib` for structural edits, page operations, watermarks, metadata, signatures-as-stamps, image-to-PDF, flattening, annotation removal, and CSV dimension reports.
-- `pdfjs-dist` through `src/lib/pdfjs.ts` for rendering PDF pages to images/previews.
+- `pdf-lib` for structural edits, page operations, interleaving/splitting/mirroring, page numbers, text overlays, standard AcroForm filling, watermarks, metadata, signatures-as-stamps, image-to-PDF, flattening, annotation removal, and CSV dimension reports.
+- `pdfjs-dist` through `src/lib/pdfjs.ts` for rendering PDF pages to images/previews, text extraction/comparison, and bookmark-aware splitting.
 - `@neslinesli93/qpdf-wasm` for password lock/unlock.
 - `zgapdfsigner` for certificate-based signing.
 - `node-forge` for signature validation support.
 
 PDF byte output is wrapped through helpers that avoid TS6 `Uint8Array<ArrayBufferLike>` `BlobPart` issues by copying/slicing data first.
+
+PDF text extraction and comparison use the document text layer only; scanned PDFs without selectable text are not OCR’d. PDF text additions are overlays, not edits to arbitrary existing PDF glyphs. The app intentionally does not offer PDF/Office format conversion, OCR, AI, or repair claims because those operations cannot reliably preserve the expected source structure in this local stack.
 
 ### FFmpeg Processor
 
@@ -151,6 +136,10 @@ HTML/PDF previews render in iframes; DOCX and text/JSON render inline.
 - Audio recorder uses microphone-only `getUserMedia()`.
 
 Output names are generated by `src/lib/recorder.ts` and use WebM or Ogg depending on supported MIME type. Screen recording is gated to desktop-sized viewports (`>= 768px`).
+
+### Scanner
+
+`src/components/ScannerPanel.tsx` captures camera stills with `getUserMedia()` or accepts local image files, lets users reorder pages, and hands them to the existing `imagesToPdf()` processor. It provides an upload fallback when camera access is unavailable; it does not perform OCR, automatic document detection, or source-image editing.
 
 ### Todo List
 

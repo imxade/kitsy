@@ -11,6 +11,7 @@ import CollagePanel from "./CollagePanel"
 import RecorderPanel from "./RecorderPanel"
 import TextOverlayPanel from "./TextOverlayPanel"
 import TodoListPanel from "./TodoListPanel"
+import ScannerPanel from "./ScannerPanel"
 
 interface ToolPanelProps {
 	tool: ToolDefinition
@@ -1455,6 +1456,10 @@ export default function ToolPanel({ tool, presetDefaults }: ToolPanelProps) {
 					onResultsChange={setResults}
 					onErrorChange={setError}
 				/>
+			)}
+
+			{uiMode === "scanner" && (
+				<ScannerPanel onResultsChange={setResults} onErrorChange={setError} />
 			)}
 
 			{uiMode === "todo" && <TodoListPanel />}
