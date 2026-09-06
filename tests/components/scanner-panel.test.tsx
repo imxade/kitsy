@@ -17,14 +17,14 @@ vi.mock("../../src/lib/pdf-processor", () => ({
 }))
 
 vi.mock("../../src/lib/image-processor", () => ({
-	cropImage: vi.fn(async () => ({
+	perspectiveCropImage: vi.fn(async () => ({
 		blob: new Blob(["cropped"], { type: "image/jpeg" }),
-		name: "first-cropped.jpg",
+		name: "first-flattened.jpg",
 	})),
 }))
 
 import ScannerPanel from "../../src/components/ScannerPanel"
-import { cropImage } from "../../src/lib/image-processor"
+import { perspectiveCropImage } from "../../src/lib/image-processor"
 
 describe("ScannerPanel", () => {
 	beforeEach(() => {
@@ -90,7 +90,7 @@ describe("ScannerPanel", () => {
 		expect(onErrorChange).toHaveBeenCalledWith(null)
 	})
 
-	it("previews and crops a selected local page before PDF creation", async () => {
+	it("flattens an irregular four-corner scan selection before PDF creation", async () => {
 		render(<ScannerPanel onResultsChange={vi.fn()} onErrorChange={vi.fn()} />)
 		const source = new File(["first"], "first.jpg", { type: "image/jpeg" })
 		fireEvent.change(screen.getByTestId("scanner-image-input"), {
@@ -111,27 +111,44 @@ describe("ScannerPanel", () => {
 		})
 		fireEvent.load(preview)
 
-		fireEvent.change(screen.getByLabelText("Crop Width"), {
-			target: { value: "1000" },
-		})
-		fireEvent.change(screen.getByLabelText("Crop Height"), {
-			target: { value: "600" },
-		})
-		fireEvent.change(screen.getByLabelText("Crop X"), {
+		fireEvent.change(screen.getByLabelText("Top left X"), {
 			target: { value: "100" },
 		})
-		fireEvent.change(screen.getByLabelText("Crop Y"), {
+		fireEvent.change(screen.getByLabelText("Top left Y"), {
 			target: { value: "50" },
+		})
+		fireEvent.change(screen.getByLabelText("Top right X"), {
+			target: { value: "1100" },
+		})
+		fireEvent.change(screen.getByLabelText("Top right Y"), {
+			target: { value: "75" },
+		})
+		fireEvent.change(screen.getByLabelText("Bottom right X"), {
+			target: { value: "1050" },
+		})
+		fireEvent.change(screen.getByLabelText("Bottom right Y"), {
+			target: { value: "700" },
+		})
+		fireEvent.change(screen.getByLabelText("Bottom left X"), {
+			target: { value: "80" },
+		})
+		fireEvent.change(screen.getByLabelText("Bottom left Y"), {
+			target: { value: "720" },
 		})
 		fireEvent.click(screen.getByTestId("scanner-apply-crop"))
 
 		await waitFor(() => {
-			expect(cropImage).toHaveBeenCalledWith(source, 100, 50, 1000, 600)
+			expect(perspectiveCropImage).toHaveBeenCalledWith(source, [
+				{ x: 100, y: 50 },
+				{ x: 1100, y: 75 },
+				{ x: 1050, y: 700 },
+				{ x: 80, y: 720 },
+			])
 		})
-		expect(await screen.findByText(/first-cropped\.jpg/)).toBeTruthy()
+		expect(await screen.findByText(/first-flattened\.jpg/)).toBeTruthy()
 	})
 
-	it("moves and resizes the crop selection directly on the scan preview", async () => {
+	it("moves each scan crop corner directly on the preview", async () => {
 		render(<ScannerPanel onResultsChange={vi.fn()} onErrorChange={vi.fn()} />)
 		const source = new File(["first"], "first.jpg", { type: "image/jpeg" })
 		fireEvent.change(screen.getByTestId("scanner-image-input"), {
@@ -171,36 +188,7 @@ describe("ScannerPanel", () => {
 		})
 		fireEvent.load(preview)
 
-		fireEvent.change(screen.getByLabelText("Crop Width"), {
-			target: { value: "800" },
-		})
-		fireEvent.change(screen.getByLabelText("Crop Height"), {
-			target: { value: "500" },
-		})
-		fireEvent.change(screen.getByLabelText("Crop X"), {
-			target: { value: "100" },
-		})
-		fireEvent.change(screen.getByLabelText("Crop Y"), {
-			target: { value: "50" },
-		})
-
-		fireEvent.pointerDown(screen.getByTestId("scanner-crop-selection"), {
-			clientX: 100,
-			clientY: 100,
-		})
-		fireEvent.pointerMove(window, { clientX: 150, clientY: 125 })
-		fireEvent.pointerUp(window)
-
-		await waitFor(() => {
-			expect((screen.getByLabelText("Crop X") as HTMLInputElement).value).toBe(
-				"200",
-			)
-			expect((screen.getByLabelText("Crop Y") as HTMLInputElement).value).toBe(
-				"100",
-			)
-		})
-
-		fireEvent.pointerDown(screen.getByTestId("scanner-crop-resize-handle"), {
+		fireEvent.pointerDown(screen.getByTestId("scanner-crop-corner-0"), {
 			clientX: 100,
 			clientY: 100,
 		})
@@ -209,11 +197,27 @@ describe("ScannerPanel", () => {
 
 		await waitFor(() => {
 			expect(
-				(screen.getByLabelText("Crop Width") as HTMLInputElement).value,
+				(screen.getByLabelText("Top left X") as HTMLInputElement).value,
+			).toBe("300")
+			expect(
+				(screen.getByLabelText("Top left Y") as HTMLInputElement).value,
+			).toBe("250")
+		})
+
+		fireEvent.pointerDown(screen.getByTestId("scanner-crop-corner-2"), {
+			clientX: 500,
+			clientY: 300,
+		})
+		fireEvent.pointerMove(window, { clientX: 450, clientY: 325 })
+		fireEvent.pointerUp(window)
+
+		await waitFor(() => {
+			expect(
+				(screen.getByLabelText("Bottom right X") as HTMLInputElement).value,
 			).toBe("900")
 			expect(
-				(screen.getByLabelText("Crop Height") as HTMLInputElement).value,
-			).toBe("550")
+				(screen.getByLabelText("Bottom right Y") as HTMLInputElement).value,
+			).toBe("650")
 		})
 	})
 

@@ -4,6 +4,7 @@ import {
 	resizeImage,
 	rotateImage,
 	cropImage,
+	perspectiveCropImage,
 	upscaleImage,
 	imageToSvg,
 	blurImage,
@@ -23,6 +24,7 @@ describe("image-processor", () => {
 		expect(typeof resizeImage).toBe("function")
 		expect(typeof rotateImage).toBe("function")
 		expect(typeof cropImage).toBe("function")
+		expect(typeof perspectiveCropImage).toBe("function")
 		expect(typeof upscaleImage).toBe("function")
 		expect(typeof imageToSvg).toBe("function")
 		expect(typeof blurImage).toBe("function")

@@ -1,12 +1,8 @@
 import { useEffect, useRef, useState } from "react"
-import { cropImage } from "../lib/image-processor"
-
-interface CropBox {
-	x: number
-	y: number
-	width: number
-	height: number
-}
+import {
+	perspectiveCropImage,
+	type PerspectiveCropPoint,
+} from "../lib/image-processor"
 
 interface ScannerCropEditorProps {
 	file: File
@@ -15,21 +11,26 @@ interface ScannerCropEditorProps {
 	onError: (message: string) => void
 }
 
-type CropGestureMode = "move" | "resize" | null
+const CORNER_LABELS = ["Top left", "Top right", "Bottom right", "Bottom left"]
 
-function clampCrop(
-	crop: CropBox,
+function clampPoint(
+	point: PerspectiveCropPoint,
 	imageWidth: number,
 	imageHeight: number,
-): CropBox {
-	const width = Math.min(Math.max(Math.round(crop.width), 1), imageWidth)
-	const height = Math.min(Math.max(Math.round(crop.height), 1), imageHeight)
+): PerspectiveCropPoint {
 	return {
-		x: Math.min(Math.max(Math.round(crop.x), 0), imageWidth - width),
-		y: Math.min(Math.max(Math.round(crop.y), 0), imageHeight - height),
-		width,
-		height,
+		x: Math.min(Math.max(Math.round(point.x), 0), imageWidth - 1),
+		y: Math.min(Math.max(Math.round(point.y), 0), imageHeight - 1),
 	}
+}
+
+function initialCorners(width: number, height: number): PerspectiveCropPoint[] {
+	return [
+		{ x: 0, y: 0 },
+		{ x: width - 1, y: 0 },
+		{ x: width - 1, y: height - 1 },
+		{ x: 0, y: height - 1 },
+	]
 }
 
 export default function ScannerCropEditor({
@@ -41,26 +42,10 @@ export default function ScannerCropEditor({
 	const imageRef = useRef<HTMLImageElement>(null)
 	const [url, setUrl] = useState<string | null>(null)
 	const [imageSize, setImageSize] = useState({ width: 0, height: 0 })
-	const [crop, setCrop] = useState<CropBox>({
-		x: 0,
-		y: 0,
-		width: 0,
-		height: 0,
-	})
+	const [corners, setCorners] = useState<PerspectiveCropPoint[]>([])
+	const [activeCorner, setActiveCorner] = useState<number | null>(null)
 	const [isCropping, setIsCropping] = useState(false)
-	const [activeGesture, setActiveGesture] = useState<CropGestureMode>(null)
-	const cropRef = useRef(crop)
 	const imageSizeRef = useRef(imageSize)
-	const gestureRef = useRef({
-		startX: 0,
-		startY: 0,
-		scale: 1,
-		origin: crop,
-	})
-
-	useEffect(() => {
-		cropRef.current = crop
-	}, [crop])
 
 	useEffect(() => {
 		imageSizeRef.current = imageSize
@@ -70,103 +55,94 @@ export default function ScannerCropEditor({
 		const objectUrl = URL.createObjectURL(file)
 		setUrl(objectUrl)
 		setImageSize({ width: 0, height: 0 })
-		setCrop({ x: 0, y: 0, width: 0, height: 0 })
+		setCorners([])
 		return () => URL.revokeObjectURL(objectUrl)
 	}, [file])
 
-	const setCropValue = (key: keyof CropBox, value: number) => {
-		setCrop((current) =>
-			clampCrop(
-				{ ...current, [key]: Number.isFinite(value) ? value : 0 },
-				imageSize.width,
-				imageSize.height,
+	useEffect(() => {
+		if (activeCorner === null) return
+
+		const moveCorner = (event: PointerEvent) => {
+			const image = imageRef.current
+			const { width, height } = imageSizeRef.current
+			if (!image || width === 0 || height === 0) return
+			if (event.cancelable) event.preventDefault()
+			const bounds = image.getBoundingClientRect()
+			const point = clampPoint(
+				{
+					x: ((event.clientX - bounds.left) / bounds.width) * width,
+					y: ((event.clientY - bounds.top) / bounds.height) * height,
+				},
+				width,
+				height,
+			)
+			setCorners((current) =>
+				current.map((corner, index) =>
+					index === activeCorner ? point : corner,
+				),
+			)
+		}
+		const finishGesture = () => setActiveCorner(null)
+		window.addEventListener("pointermove", moveCorner, { passive: false })
+		window.addEventListener("pointerup", finishGesture)
+		window.addEventListener("pointercancel", finishGesture)
+		return () => {
+			window.removeEventListener("pointermove", moveCorner)
+			window.removeEventListener("pointerup", finishGesture)
+			window.removeEventListener("pointercancel", finishGesture)
+		}
+	}, [activeCorner])
+
+	const setCornerValue = (
+		index: number,
+		axis: keyof PerspectiveCropPoint,
+		value: number,
+	) => {
+		setCorners((current) =>
+			current.map((point, pointIndex) =>
+				pointIndex === index
+					? clampPoint(
+							{ ...point, [axis]: Number.isFinite(value) ? value : 0 },
+							imageSize.width,
+							imageSize.height,
+						)
+					: point,
 			),
 		)
 	}
 
-	useEffect(() => {
-		if (!activeGesture) return
-
-		const handleMove = (event: PointerEvent) => {
-			if (event.cancelable) event.preventDefault()
-			const { origin, scale, startX, startY } = gestureRef.current
-			const dx = (event.clientX - startX) / scale
-			const dy = (event.clientY - startY) / scale
-			const next =
-				activeGesture === "move"
-					? { ...origin, x: origin.x + dx, y: origin.y + dy }
-					: {
-							...origin,
-							width: origin.width + dx,
-							height: origin.height + dy,
-						}
-			const bounds = imageSizeRef.current
-			setCrop(clampCrop(next, bounds.width, bounds.height))
-		}
-
-		const finishGesture = () => setActiveGesture(null)
-		window.addEventListener("pointermove", handleMove, { passive: false })
-		window.addEventListener("pointerup", finishGesture)
-		window.addEventListener("pointercancel", finishGesture)
-		return () => {
-			window.removeEventListener("pointermove", handleMove)
-			window.removeEventListener("pointerup", finishGesture)
-			window.removeEventListener("pointercancel", finishGesture)
-		}
-	}, [activeGesture])
-
-	const beginGesture = (
-		event: React.PointerEvent<HTMLDivElement>,
-		mode: Exclude<CropGestureMode, null>,
-	) => {
-		if (!imageRef.current || imageSize.width === 0) return
-		event.preventDefault()
-		event.stopPropagation()
-		const displayedWidth = imageRef.current.getBoundingClientRect().width
-		const scale = displayedWidth / imageSize.width
-		if (scale <= 0) return
-		gestureRef.current = {
-			startX: event.clientX,
-			startY: event.clientY,
-			scale,
-			origin: cropRef.current,
-		}
-		setActiveGesture(mode)
-	}
-
 	const apply = async () => {
-		if (imageSize.width === 0 || imageSize.height === 0) return
+		if (corners.length !== 4) return
 		setIsCropping(true)
 		onError("")
 		try {
-			const next = await cropImage(
-				file,
-				crop.x,
-				crop.y,
-				crop.width,
-				crop.height,
-			)
+			const next = await perspectiveCropImage(file, corners)
 			onApply(new File([next.blob], next.name, { type: next.blob.type }))
 		} catch (error) {
 			onError(
-				error instanceof Error ? error.message : "Could not crop this page.",
+				error instanceof Error ? error.message : "Could not flatten this page.",
 			)
 		} finally {
 			setIsCropping(false)
 		}
 	}
 
-	const displayWidth = imageRef.current?.clientWidth ?? 0
-	const displayHeight = imageRef.current?.clientHeight ?? 0
 	const hasImage = imageSize.width > 0 && imageSize.height > 0
+	const polygon = corners
+		.map(
+			(point) =>
+				`${(point.x / imageSize.width) * 100},${(point.y / imageSize.height) * 100}`,
+		)
+		.join(" ")
 
 	return (
 		<div className="rounded-2xl border border-base-content/10 bg-base-200/40 p-4">
 			<div className="mb-3 flex flex-wrap items-center justify-between gap-2">
 				<div>
-					<h3 className="font-semibold">Crop selected page</h3>
+					<h3 className="font-semibold">Straighten selected page</h3>
 					<p className="text-sm text-base-content/60">
-						Drag the crop box to move it, or its corner to resize it.
+						Place each corner on the document. The selected shape is flattened
+						into a rectangle.
 					</p>
 				</div>
 				<button
@@ -192,75 +168,101 @@ export default function ScannerCropEditor({
 									const width = image.naturalWidth
 									const height = image.naturalHeight
 									setImageSize({ width, height })
-									setCrop({ x: 0, y: 0, width, height })
+									setCorners(initialCorners(width, height))
 								}}
 							/>
 						)}
-						{hasImage && displayWidth > 0 && displayHeight > 0 && (
-							// biome-ignore lint/a11y/useSemanticElements: Pointer-operated crop selection
-							<div
-								role="button"
-								tabIndex={0}
-								aria-label="Move crop selection"
-								className="absolute cursor-move border-2 border-primary bg-primary/10"
-								style={{
-									left: `${(crop.x / imageSize.width) * 100}%`,
-									top: `${(crop.y / imageSize.height) * 100}%`,
-									width: `${(crop.width / imageSize.width) * 100}%`,
-									height: `${(crop.height / imageSize.height) * 100}%`,
-									touchAction: "none",
-								}}
-								onPointerDown={(event) => beginGesture(event, "move")}
-								onKeyDown={() => {}}
-								data-testid="scanner-crop-selection"
-							>
-								{/* biome-ignore lint/a11y/useSemanticElements: Pointer-operated crop resize handle */}
-								<div
-									role="button"
-									tabIndex={0}
-									aria-label="Resize crop selection"
-									className="absolute -right-2 -bottom-2 h-4 w-4 cursor-se-resize rounded-full border-2 border-base-100/50 bg-primary shadow-md"
-									onPointerDown={(event) => beginGesture(event, "resize")}
-									onKeyDown={() => {}}
-									data-testid="scanner-crop-resize-handle"
-								/>
-							</div>
+						{hasImage && corners.length === 4 && (
+							<>
+								<svg
+									className="pointer-events-none absolute inset-0 h-full w-full overflow-visible"
+									viewBox="0 0 100 100"
+									preserveAspectRatio="none"
+									aria-hidden="true"
+								>
+									<polygon
+										points={polygon}
+										className="fill-primary/10 stroke-primary"
+										strokeWidth="0.5"
+									/>
+								</svg>
+								{corners.map((point, index) => (
+									// biome-ignore lint/a11y/useSemanticElements: Pointer-operated document corner
+									<div
+										key={CORNER_LABELS[index]}
+										role="button"
+										tabIndex={0}
+										aria-label={`Move ${CORNER_LABELS[index]} corner`}
+										className="absolute -ml-3 -mt-3 h-6 w-6 cursor-grab rounded-full border-2 border-base-100 bg-primary shadow-md active:cursor-grabbing"
+										style={{
+											left: `${(point.x / imageSize.width) * 100}%`,
+											top: `${(point.y / imageSize.height) * 100}%`,
+											touchAction: "none",
+										}}
+										onPointerDown={(event) => {
+											event.preventDefault()
+											setActiveCorner(index)
+										}}
+										onKeyDown={() => {}}
+										data-testid={`scanner-crop-corner-${index}`}
+									/>
+								))}
+							</>
 						)}
 					</div>
 				</div>
 
 				<div className="grid grid-cols-2 gap-2 content-start">
-					{(
-						[
-							["x", "X"],
-							["y", "Y"],
-							["width", "Width"],
-							["height", "Height"],
-						] as const
-					).map(([key, label]) => (
-						<label key={key} className="form-control">
-							<span className="label-text text-xs">{label} (px)</span>
+					{corners.map((point, index) => (
+						<div
+							key={CORNER_LABELS[index]}
+							className="col-span-2 grid grid-cols-[1fr_1fr_1fr] gap-2"
+						>
+							<span className="self-center text-xs text-base-content/70">
+								{CORNER_LABELS[index]}
+							</span>
 							<input
-								aria-label={`Crop ${label}`}
+								aria-label={`${CORNER_LABELS[index]} X`}
 								type="number"
 								className="input input-bordered input-sm w-full"
-								min={key === "width" || key === "height" ? 1 : 0}
-								value={crop[key] || ""}
+								min={0}
+								value={point.x}
 								disabled={!hasImage || isCropping}
 								onChange={(event) =>
-									setCropValue(key, Number(event.target.value))
+									setCornerValue(index, "x", Number(event.target.value))
 								}
 							/>
-						</label>
+							<input
+								aria-label={`${CORNER_LABELS[index]} Y`}
+								type="number"
+								className="input input-bordered input-sm w-full"
+								min={0}
+								value={point.y}
+								disabled={!hasImage || isCropping}
+								onChange={(event) =>
+									setCornerValue(index, "y", Number(event.target.value))
+								}
+							/>
+						</div>
 					))}
 					<button
 						type="button"
-						className="btn btn-primary col-span-2 mt-2"
+						className="btn btn-ghost btn-sm col-span-2"
+						disabled={!hasImage || isCropping}
+						onClick={() =>
+							setCorners(initialCorners(imageSize.width, imageSize.height))
+						}
+					>
+						Reset corners
+					</button>
+					<button
+						type="button"
+						className="btn btn-primary col-span-2"
 						disabled={!hasImage || isCropping}
 						onClick={apply}
 						data-testid="scanner-apply-crop"
 					>
-						{isCropping ? "Cropping..." : "Apply crop"}
+						{isCropping ? "Flattening..." : "Flatten page"}
 					</button>
 				</div>
 			</div>

@@ -14,6 +14,11 @@ export interface ProcessedFile {
 	name: string
 }
 
+export interface PerspectiveCropPoint {
+	x: number
+	y: number
+}
+
 export type DrawableImage = ImageBitmap | HTMLImageElement
 interface LoadedImage {
 	img: DrawableImage
@@ -190,6 +195,201 @@ export async function cropImage(
 	const blob = await canvas.convertToBlob(canvasEncodeOptions(mime))
 	const baseName = file.name.replace(/\.[^.]+$/, "")
 	return { blob, name: `${baseName}-cropped${mimeToExt(mime)}` }
+}
+
+function solveLinearSystem(matrix: number[][]): number[] | null {
+	const size = matrix.length
+	for (let column = 0; column < size; column++) {
+		let pivot = column
+		for (let row = column + 1; row < size; row++) {
+			if (Math.abs(matrix[row][column]) > Math.abs(matrix[pivot][column])) {
+				pivot = row
+			}
+		}
+		if (Math.abs(matrix[pivot][column]) < 1e-10) return null
+		;[matrix[column], matrix[pivot]] = [matrix[pivot], matrix[column]]
+
+		const pivotValue = matrix[column][column]
+		for (let entry = column; entry <= size; entry++) {
+			matrix[column][entry] /= pivotValue
+		}
+		for (let row = 0; row < size; row++) {
+			if (row === column) continue
+			const factor = matrix[row][column]
+			for (let entry = column; entry <= size; entry++) {
+				matrix[row][entry] -= factor * matrix[column][entry]
+			}
+		}
+	}
+	return matrix.map((row) => row[size])
+}
+
+function isConvexQuadrilateral(points: PerspectiveCropPoint[]): boolean {
+	if (points.length !== 4) return false
+	let direction = 0
+	for (let index = 0; index < 4; index++) {
+		const first = points[index]
+		const second = points[(index + 1) % 4]
+		const third = points[(index + 2) % 4]
+		const cross =
+			(second.x - first.x) * (third.y - second.y) -
+			(second.y - first.y) * (third.x - second.x)
+		if (Math.abs(cross) < 1e-5) return false
+		const nextDirection = Math.sign(cross)
+		if (direction !== 0 && direction !== nextDirection) return false
+		direction = nextDirection
+	}
+	return true
+}
+
+/**
+ * Straightens a four-corner document selection into a rectangular image.
+ * Points must be ordered top-left, top-right, bottom-right, bottom-left.
+ */
+export async function perspectiveCropImage(
+	file: File,
+	points: PerspectiveCropPoint[],
+): Promise<ProcessedFile> {
+	const {
+		img,
+		width: sourceWidth,
+		height: sourceHeight,
+		close,
+	} = await loadDrawable(file)
+	try {
+		const sourcePoints = points.map((point) => ({
+			x: Math.min(Math.max(Math.round(point.x), 0), sourceWidth - 1),
+			y: Math.min(Math.max(Math.round(point.y), 0), sourceHeight - 1),
+		}))
+		if (!isConvexQuadrilateral(sourcePoints)) {
+			throw new Error("Crop corners must form a non-overlapping quadrilateral")
+		}
+
+		const distance = (
+			first: PerspectiveCropPoint,
+			second: PerspectiveCropPoint,
+		) => Math.hypot(second.x - first.x, second.y - first.y)
+		const outputWidth = Math.max(
+			1,
+			Math.round(
+				(distance(sourcePoints[0], sourcePoints[1]) +
+					distance(sourcePoints[3], sourcePoints[2])) /
+					2,
+			),
+		)
+		const outputHeight = Math.max(
+			1,
+			Math.round(
+				(distance(sourcePoints[0], sourcePoints[3]) +
+					distance(sourcePoints[1], sourcePoints[2])) /
+					2,
+			),
+		)
+		const destinationPoints = [
+			{ x: 0, y: 0 },
+			{ x: outputWidth - 1, y: 0 },
+			{ x: outputWidth - 1, y: outputHeight - 1 },
+			{ x: 0, y: outputHeight - 1 },
+		]
+		const matrix = destinationPoints.flatMap((destination, index) => {
+			const source = sourcePoints[index]
+			return [
+				[
+					destination.x,
+					destination.y,
+					1,
+					0,
+					0,
+					0,
+					-destination.x * source.x,
+					-destination.y * source.x,
+					source.x,
+				],
+				[
+					0,
+					0,
+					0,
+					destination.x,
+					destination.y,
+					1,
+					-destination.x * source.y,
+					-destination.y * source.y,
+					source.y,
+				],
+			]
+		})
+		const transform = solveLinearSystem(matrix)
+		if (!transform) throw new Error("Could not calculate the crop perspective")
+
+		const sourceCanvas = new OffscreenCanvas(sourceWidth, sourceHeight)
+		const sourceContext = sourceCanvas.getContext("2d", {
+			willReadFrequently: true,
+		})
+		if (!sourceContext) throw new Error("Could not get 2D context")
+		sourceContext.drawImage(img, 0, 0)
+		const sourcePixels = sourceContext.getImageData(
+			0,
+			0,
+			sourceWidth,
+			sourceHeight,
+		).data
+
+		const outputCanvas = new OffscreenCanvas(outputWidth, outputHeight)
+		const outputContext = outputCanvas.getContext("2d")
+		if (!outputContext) throw new Error("Could not get 2D context")
+		const outputPixels = outputContext.createImageData(
+			outputWidth,
+			outputHeight,
+		)
+
+		for (let y = 0; y < outputHeight; y++) {
+			for (let x = 0; x < outputWidth; x++) {
+				const denominator = transform[6] * x + transform[7] * y + 1
+				const sourceX = Math.min(
+					Math.max(
+						(transform[0] * x + transform[1] * y + transform[2]) / denominator,
+						0,
+					),
+					sourceWidth - 1,
+				)
+				const sourceY = Math.min(
+					Math.max(
+						(transform[3] * x + transform[4] * y + transform[5]) / denominator,
+						0,
+					),
+					sourceHeight - 1,
+				)
+				const left = Math.floor(sourceX)
+				const top = Math.floor(sourceY)
+				const right = Math.min(left + 1, sourceWidth - 1)
+				const bottom = Math.min(top + 1, sourceHeight - 1)
+				const horizontal = sourceX - left
+				const vertical = sourceY - top
+				const destinationOffset = (y * outputWidth + x) * 4
+				for (let channel = 0; channel < 4; channel++) {
+					const topValue =
+						sourcePixels[(top * sourceWidth + left) * 4 + channel] *
+							(1 - horizontal) +
+						sourcePixels[(top * sourceWidth + right) * 4 + channel] * horizontal
+					const bottomValue =
+						sourcePixels[(bottom * sourceWidth + left) * 4 + channel] *
+							(1 - horizontal) +
+						sourcePixels[(bottom * sourceWidth + right) * 4 + channel] *
+							horizontal
+					outputPixels.data[destinationOffset + channel] =
+						topValue * (1 - vertical) + bottomValue * vertical
+				}
+			}
+		}
+
+		outputContext.putImageData(outputPixels, 0, 0)
+		const mime = file.type || "image/png"
+		const blob = await outputCanvas.convertToBlob(canvasEncodeOptions(mime))
+		const baseName = file.name.replace(/\.[^.]+$/, "")
+		return { blob, name: `${baseName}-flattened${mimeToExt(mime)}` }
+	} finally {
+		close()
+	}
 }
 
 export async function upscaleImage(
