@@ -311,13 +311,39 @@ describe("ScannerPanel", () => {
 		vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue(undefined)
 
 		render(<ScannerPanel onResultsChange={vi.fn()} onErrorChange={vi.fn()} />)
+
+		// Before starting camera: check camera select options
+		const initialSelect = (await screen.findByTestId(
+			"scanner-camera-select",
+		)) as HTMLSelectElement
+		const optionValues = Array.from(initialSelect.options).map(
+			(opt) => opt.value,
+		)
+		expect(optionValues).not.toContain("user")
+		expect(optionValues).not.toContain("environment")
+		expect(optionValues).toEqual(["rear-cam-id", "front-cam-id"])
+
 		fireEvent.click(screen.getByText("Start camera"))
 
 		await screen.findByTestId("scanner-preview")
 		expect(screen.getByTestId("scanner-capture-page")).toBeTruthy()
 		expect(screen.getByTestId("scanner-flip-camera")).toBeTruthy()
 
-		fireEvent.click(screen.getByTestId("scanner-flip-camera"))
+		// Live switch via active dropdown in viewfinder
+		const activeSelect = screen.getByTestId(
+			"scanner-camera-select-active",
+		) as HTMLSelectElement
+		expect(activeSelect).toBeTruthy()
+		const activeOptionValues = Array.from(activeSelect.options).map(
+			(opt) => opt.value,
+		)
+		expect(activeOptionValues).toEqual(["rear-cam-id", "front-cam-id"])
+
+		fireEvent.change(activeSelect, { target: { value: "front-cam-id" } })
 		await waitFor(() => expect(getUserMediaMock).toHaveBeenCalledTimes(2))
+
+		// Live switch via flip button
+		fireEvent.click(screen.getByTestId("scanner-flip-camera"))
+		await waitFor(() => expect(getUserMediaMock).toHaveBeenCalledTimes(3))
 	})
 })

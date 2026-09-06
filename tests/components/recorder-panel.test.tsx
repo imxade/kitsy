@@ -270,6 +270,14 @@ describe("RecorderPanel", () => {
 		expect(cameraSelect).toBeTruthy()
 		expect(screen.getByTestId("recorder-flip-camera")).toBeTruthy()
 
+		// Verify no separate dummy back/front options exist
+		const optionValues = Array.from(cameraSelect.options).map(
+			(opt) => opt.value,
+		)
+		expect(optionValues).not.toContain("user")
+		expect(optionValues).not.toContain("environment")
+		expect(optionValues).toEqual(["back-camera-id", "front-camera-id"])
+
 		fireEvent.change(cameraSelect, {
 			target: { value: "back-camera-id" },
 		})
@@ -277,5 +285,136 @@ describe("RecorderPanel", () => {
 
 		fireEvent.click(screen.getByTestId("recorder-flip-camera"))
 		expect(cameraSelect.value).toBe("front-camera-id")
+	})
+
+	it("allows switching camera live while recording without disabling controls", async () => {
+		delete window.__KITSY_RECORDER_E2E__
+
+		class MockCameraTrack {
+			kind = "video"
+			id: string
+			stop = vi.fn()
+			constructor(id: string) {
+				this.id = id
+			}
+			getSettings = () => ({
+				deviceId: this.id,
+				width: 1920,
+				height: 1080,
+			})
+		}
+
+		class MockCameraStream {
+			tracks: MockCameraTrack[]
+			constructor(track: MockCameraTrack) {
+				this.tracks = [track]
+			}
+			getTracks = () => this.tracks
+			getVideoTracks = () => this.tracks
+			getAudioTracks = () => []
+			addTrack = vi.fn((t: MockCameraTrack) => {
+				this.tracks.push(t)
+			})
+			removeTrack = vi.fn((t: MockCameraTrack) => {
+				this.tracks = this.tracks.filter((track) => track !== t)
+			})
+		}
+
+		class MockRecorder {
+			state = "inactive"
+			ondataavailable: ((event: { data: Blob }) => void) | null = null
+			onstop: (() => void) | null = null
+			onerror: (() => void) | null = null
+			start = vi.fn(() => {
+				this.state = "recording"
+			})
+			stop = vi.fn(() => {
+				this.state = "inactive"
+				this.ondataavailable?.({
+					data: new Blob(["recorded-video"], { type: "video/webm" }),
+				})
+				this.onstop?.()
+			})
+		}
+		Object.defineProperty(window, "MediaRecorder", {
+			configurable: true,
+			value: MockRecorder,
+		})
+
+		const getUserMediaMock = vi.fn(
+			async (constraints?: MediaStreamConstraints) => {
+				const videoConstraints = constraints?.video as
+					| MediaTrackConstraints
+					| undefined
+				const exactId = (videoConstraints?.deviceId as { exact?: string })
+					?.exact
+				const isFront = exactId === "front-camera-id"
+				return new MockCameraStream(
+					new MockCameraTrack(isFront ? "front-camera-id" : "back-camera-id"),
+				)
+			},
+		)
+
+		Object.defineProperty(navigator, "mediaDevices", {
+			configurable: true,
+			value: {
+				getUserMedia: getUserMediaMock,
+				enumerateDevices: async () => [
+					{
+						kind: "videoinput",
+						deviceId: "back-camera-id",
+						label: "Back Camera",
+					},
+					{
+						kind: "videoinput",
+						deviceId: "front-camera-id",
+						label: "Front Camera",
+					},
+				],
+			},
+		})
+		vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue(undefined)
+
+		const onResultsChange = vi.fn()
+		render(
+			<RecorderPanel
+				kind="camera"
+				onResultsChange={onResultsChange}
+				onErrorChange={vi.fn()}
+			/>,
+		)
+
+		// Start recording
+		fireEvent.click(screen.getByTestId("recorder-toggle"))
+		await waitFor(() => {
+			expect(
+				screen.getByTestId("recorder-toggle").getAttribute("aria-label"),
+			).toBe("Stop Recording")
+		})
+
+		const cameraSelect = screen.getByTestId(
+			"recorder-camera-select",
+		) as HTMLSelectElement
+		const flipButton = screen.getByTestId(
+			"recorder-flip-camera",
+		) as HTMLButtonElement
+
+		// Controls MUST NOT be disabled while recording
+		expect(cameraSelect.disabled).toBe(false)
+		expect(flipButton.disabled).toBe(false)
+
+		// Switch camera while recording
+		fireEvent.click(flipButton)
+		await waitFor(() => {
+			expect(getUserMediaMock).toHaveBeenCalledTimes(2)
+		})
+
+		// Stop recording
+		fireEvent.click(screen.getByTestId("recorder-toggle"))
+		await waitFor(() => {
+			expect(onResultsChange).toHaveBeenCalledWith([
+				expect.objectContaining({ name: expect.stringContaining(".webm") }),
+			])
+		})
 	})
 })

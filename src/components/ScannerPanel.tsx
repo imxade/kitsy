@@ -142,7 +142,16 @@ export default function ScannerPanel({
 			if (settings?.deviceId) {
 				setSelectedDeviceId(settings.deviceId)
 			}
-			setPreviewReady(false)
+			if (videoRef.current) {
+				videoRef.current.muted = true
+				videoRef.current.playsInline = true
+				videoRef.current.srcObject = stream
+				void videoRef.current.play().catch(() => undefined)
+				if (videoRef.current.videoWidth && videoRef.current.videoHeight) {
+					updateCameraAspectRatio(videoRef.current)
+				}
+			}
+			setPreviewReady(true)
 			setCameraActive(true)
 			void refreshDevices()
 		} catch (error) {
@@ -155,34 +164,41 @@ export default function ScannerPanel({
 	}
 
 	const flipCamera = async () => {
-		const nextFacing: CameraFacingMode =
-			facingMode === "environment" ? "user" : "environment"
-		setFacingMode(nextFacing)
-
-		const matching = videoDevices.find((d) => d.facingMode === nextFacing)
-		const nextDeviceId = matching ? matching.deviceId : ""
-		setSelectedDeviceId(nextDeviceId)
-
-		if (cameraActive) {
-			await startCamera(nextDeviceId, nextFacing)
+		if (videoDevices.length > 1) {
+			const currentIndex = videoDevices.findIndex(
+				(d) => d.deviceId === selectedDeviceId,
+			)
+			const nextIndex =
+				currentIndex >= 0 ? (currentIndex + 1) % videoDevices.length : 1
+			const nextDev = videoDevices[nextIndex]
+			setSelectedDeviceId(nextDev.deviceId)
+			const nextFacing =
+				nextDev.facingMode ||
+				(facingMode === "environment" ? "user" : "environment")
+			setFacingMode(nextFacing)
+			if (cameraActive) {
+				await startCamera(nextDev.deviceId, nextFacing)
+			}
+		} else {
+			const nextFacing: CameraFacingMode =
+				facingMode === "environment" ? "user" : "environment"
+			setFacingMode(nextFacing)
+			const matching = videoDevices.find((d) => d.facingMode === nextFacing)
+			const nextDeviceId = matching ? matching.deviceId : ""
+			setSelectedDeviceId(nextDeviceId)
+			if (cameraActive) {
+				await startCamera(nextDeviceId, nextFacing)
+			}
 		}
 	}
 
 	const handleCameraSelect = async (value: string) => {
-		if (value === "user" || value === "environment") {
-			setFacingMode(value)
-			setSelectedDeviceId("")
-			if (cameraActive) {
-				await startCamera("", value)
-			}
-		} else {
-			const dev = videoDevices.find((d) => d.deviceId === value)
-			setSelectedDeviceId(value)
-			const nextFacing = dev?.facingMode || facingMode
-			if (dev?.facingMode) setFacingMode(dev.facingMode)
-			if (cameraActive) {
-				await startCamera(value, nextFacing)
-			}
+		const dev = videoDevices.find((d) => d.deviceId === value)
+		setSelectedDeviceId(value)
+		const nextFacing = dev?.facingMode || facingMode
+		if (dev?.facingMode) setFacingMode(dev.facingMode)
+		if (cameraActive) {
+			await startCamera(value, nextFacing)
 		}
 	}
 
@@ -326,16 +342,21 @@ export default function ScannerPanel({
 								aria-label="Select camera"
 								data-testid="scanner-camera-select"
 								className="select select-bordered select-xs rounded-full font-medium"
-								value={selectedDeviceId || facingMode}
-								onChange={(e) => handleCameraSelect(e.target.value)}
+								value={selectedDeviceId || (videoDevices[0]?.deviceId ?? "")}
+								onChange={(e) => void handleCameraSelect(e.target.value)}
 							>
-								<option value="environment">Back Camera (Document)</option>
-								<option value="user">Front Camera</option>
-								{videoDevices.map((device, idx) => (
-									<option key={device.deviceId || idx} value={device.deviceId}>
-										{device.label}
-									</option>
-								))}
+								{videoDevices.length === 0 ? (
+									<option value="">Default Camera</option>
+								) : (
+									videoDevices.map((device, idx) => (
+										<option
+											key={device.deviceId || idx}
+											value={device.deviceId}
+										>
+											{device.label}
+										</option>
+									))
+								)}
 							</select>
 						</div>
 					</div>
@@ -351,30 +372,29 @@ export default function ScannerPanel({
 										aria-label="Select camera"
 										data-testid="scanner-camera-select-active"
 										className="bg-transparent text-xs font-semibold text-white focus:outline-none cursor-pointer pr-1"
-										value={selectedDeviceId || facingMode}
-										onChange={(e) => handleCameraSelect(e.target.value)}
+										value={
+											selectedDeviceId || (videoDevices[0]?.deviceId ?? "")
+										}
+										onChange={(e) => void handleCameraSelect(e.target.value)}
 									>
-										<option
-											value="environment"
-											className="bg-neutral text-neutral-content"
-										>
-											Back Camera
-										</option>
-										<option
-											value="user"
-											className="bg-neutral text-neutral-content"
-										>
-											Front Camera
-										</option>
-										{videoDevices.map((device, idx) => (
+										{videoDevices.length === 0 ? (
 											<option
-												key={device.deviceId || idx}
-												value={device.deviceId}
+												value=""
 												className="bg-neutral text-neutral-content"
 											>
-												{device.label}
+												Default Camera
 											</option>
-										))}
+										) : (
+											videoDevices.map((device, idx) => (
+												<option
+													key={device.deviceId || idx}
+													value={device.deviceId}
+													className="bg-neutral text-neutral-content"
+												>
+													{device.label}
+												</option>
+											))
+										)}
 									</select>
 								</div>
 

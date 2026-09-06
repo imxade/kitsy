@@ -123,7 +123,9 @@ export default function FileDropzone({
 			<p className="text-lg font-semibold text-base-content">
 				{isDragging ? "Drop files here" : "Drag & drop files here"}
 			</p>
-			<p className="text-sm text-base-content/60 mt-1">or paste / click to browse</p>
+			<p className="text-sm text-base-content/60 mt-1">
+				or paste / click to browse
+			</p>
 			{acceptedExtensions[0] !== "*" && (
 				<p className="text-xs text-base-content/40 mt-3">
 					Supported: {acceptedExtensions.join(", ")}
@@ -141,4 +143,3 @@ export default function FileDropzone({
 		</div>
 	)
 }
-

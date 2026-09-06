@@ -102,25 +102,109 @@ export default function RecorderPanel({
 		}
 	}, [])
 
-	const flipCamera = () => {
-		const nextFacing: CameraFacingMode =
-			facingMode === "environment" ? "user" : "environment"
-		setFacingMode(nextFacing)
+	const switchCamera = async (
+		targetDeviceId: string,
+		targetFacing: CameraFacingMode,
+	) => {
+		setSelectedDeviceId(targetDeviceId)
+		setFacingMode(targetFacing)
 
-		const matching = videoDevices.find((d) => d.facingMode === nextFacing)
-		const nextDeviceId = matching ? matching.deviceId : ""
-		setSelectedDeviceId(nextDeviceId)
+		const isCameraActive =
+			isRecording || Boolean(previewVideoRef.current?.srcObject)
+		if (!isCameraActive) {
+			return
+		}
+
+		try {
+			const newStream = await requestCameraStream(
+				targetDeviceId || null,
+				targetFacing,
+				false,
+			)
+			const newVideoTrack = newStream.getVideoTracks?.()?.[0]
+			const settings = newVideoTrack?.getSettings?.()
+			if (settings?.width && settings?.height) {
+				setCameraAspectRatio(`${settings.width} / ${settings.height}`)
+			}
+
+			if (kind === "camera") {
+				const oldCameraStream = cameraStreamRef.current
+				cameraStreamRef.current = newStream
+
+				if (previewVideoRef.current) {
+					previewVideoRef.current.srcObject = newStream
+					void previewVideoRef.current.play().catch(() => undefined)
+				}
+
+				if (activeStreamRef.current && newVideoTrack) {
+					const oldTrack = activeStreamRef.current.getVideoTracks?.()?.[0]
+					if (oldTrack && oldTrack !== newVideoTrack) {
+						if (typeof activeStreamRef.current.addTrack === "function") {
+							activeStreamRef.current.addTrack(newVideoTrack)
+						}
+						if (typeof activeStreamRef.current.removeTrack === "function") {
+							activeStreamRef.current.removeTrack(oldTrack)
+						}
+					}
+				}
+
+				if (oldCameraStream) {
+					for (const track of oldCameraStream.getVideoTracks?.() ?? []) {
+						track.stop?.()
+					}
+				}
+			} else if (kind === "screen" && includeCamera) {
+				const oldCameraStream = cameraStreamRef.current
+				cameraStreamRef.current = newStream
+
+				if (hiddenCameraVideoRef.current) {
+					hiddenCameraVideoRef.current.srcObject = newStream
+					await waitForPlayback(hiddenCameraVideoRef.current).catch(
+						() => undefined,
+					)
+				}
+
+				if (oldCameraStream) {
+					for (const track of oldCameraStream.getVideoTracks?.() ?? []) {
+						track.stop?.()
+					}
+				}
+			}
+			void refreshDevices()
+		} catch (error) {
+			onErrorChange(
+				error instanceof Error
+					? `Could not switch camera: ${error.message}`
+					: "Could not switch camera.",
+			)
+		}
 	}
 
-	const handleCameraSelect = (value: string) => {
-		if (value === "user" || value === "environment") {
-			setFacingMode(value)
-			setSelectedDeviceId("")
+	const flipCamera = async () => {
+		if (videoDevices.length > 1) {
+			const currentIndex = videoDevices.findIndex(
+				(d) => d.deviceId === selectedDeviceId,
+			)
+			const nextIndex =
+				currentIndex >= 0 ? (currentIndex + 1) % videoDevices.length : 1
+			const nextDev = videoDevices[nextIndex]
+			const nextFacing =
+				nextDev.facingMode ||
+				(facingMode === "environment" ? "user" : "environment")
+			await switchCamera(nextDev.deviceId, nextFacing)
 		} else {
-			const dev = videoDevices.find((d) => d.deviceId === value)
-			setSelectedDeviceId(value)
-			if (dev?.facingMode) setFacingMode(dev.facingMode)
+			const nextFacing: CameraFacingMode =
+				facingMode === "environment" ? "user" : "environment"
+			const matching = videoDevices.find((d) => d.facingMode === nextFacing)
+			const nextDeviceId = matching ? matching.deviceId : ""
+			await switchCamera(nextDeviceId, nextFacing)
 		}
+	}
+
+	const handleCameraSelect = async (value: string) => {
+		const dev = videoDevices.find((d) => d.deviceId === value)
+		const nextFacing = dev?.facingMode || facingMode
+		await switchCamera(value, nextFacing)
 	}
 
 	const canvasRef = useRef<HTMLCanvasElement>(null)
@@ -355,6 +439,7 @@ export default function RecorderPanel({
 					facingMode,
 					includeMicrophone,
 				)
+				cameraStream = recordingStream
 				const track = recordingStream.getVideoTracks?.()?.[0]
 				const settings = track?.getSettings?.()
 				if (settings?.width && settings?.height) {
@@ -557,28 +642,28 @@ export default function RecorderPanel({
 									aria-label="Select camera device"
 									data-testid="recorder-camera-select"
 									className="select select-ghost select-xs text-xs font-medium focus:outline-none cursor-pointer"
-									disabled={isRecording}
-									value={selectedDeviceId || facingMode}
-									onChange={(e) => handleCameraSelect(e.target.value)}
+									value={selectedDeviceId || (videoDevices[0]?.deviceId ?? "")}
+									onChange={(e) => void handleCameraSelect(e.target.value)}
 								>
-									<option value="user">Front Camera (Selfie)</option>
-									<option value="environment">Back Camera</option>
-									{videoDevices.map((device, idx) => (
-										<option
-											key={device.deviceId || idx}
-											value={device.deviceId}
-										>
-											{device.label}
-										</option>
-									))}
+									{videoDevices.length === 0 ? (
+										<option value="">Default Camera</option>
+									) : (
+										videoDevices.map((device, idx) => (
+											<option
+												key={device.deviceId || idx}
+												value={device.deviceId}
+											>
+												{device.label}
+											</option>
+										))
+									)}
 								</select>
 							</label>
 
 							<button
 								type="button"
 								className="btn btn-circle btn-sm btn-outline border-base-content/10"
-								onClick={flipCamera}
-								disabled={isRecording}
+								onClick={() => void flipCamera()}
 								aria-label="Switch camera"
 								title="Switch camera"
 								data-testid="recorder-flip-camera"
