@@ -119,7 +119,6 @@ describe("tool-registry", () => {
 			"pdf-extract-text",
 			"pdf-compare-text",
 			"pdf-add-content",
-			"pdf-fill-form",
 			"scan-to-pdf",
 		])
 		const uncovered = getAllTools()

@@ -92,7 +92,7 @@ AI background removal uses `@imgly/background-removal` with the `isnet_quint8` m
 
 `src/lib/pdf-processor.ts` uses:
 
-- `pdf-lib` for structural edits, page operations, interleaving/splitting/mirroring, page numbers, text overlays, standard AcroForm filling, watermarks, metadata, signatures-as-stamps, image-to-PDF, flattening, annotation removal, and CSV dimension reports.
+- `pdf-lib` for structural edits, page operations, interleaving/splitting/mirroring, page numbers, text overlays, watermarks, metadata, signatures-as-stamps, image-to-PDF, flattening, annotation removal, and CSV dimension reports.
 - `pdfjs-dist` through `src/lib/pdfjs.ts` for rendering PDF pages to images/previews, text extraction/comparison, and bookmark-aware splitting.
 - `@neslinesli93/qpdf-wasm` for password lock/unlock.
 - `zgapdfsigner` for certificate-based signing.

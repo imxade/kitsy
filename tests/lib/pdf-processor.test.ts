@@ -11,7 +11,6 @@ import {
 	flipPdf,
 	addPdfTextOverlay,
 	comparePdfText,
-	fillPdfForm,
 	deletePdfPages,
 	reorderPdfPages,
 	extractPdfPages,
@@ -171,26 +170,6 @@ describe("pdf-processor", () => {
 
 		expect(result.name).toBe("pdf-text-comparison.json")
 		expect(report.changedPages).toEqual([1])
-	})
-
-	it("fillPdfForm fills and flattens a standard AcroForm field", async () => {
-		const document = await PDFDocument.create()
-		document.addPage([612, 792])
-		const field = document.getForm().createTextField("name")
-		field.addToPage(document.getPage(0), {
-			x: 72,
-			y: 700,
-			width: 180,
-			height: 24,
-		})
-		const source = new File([(await document.save()).slice()], "form.pdf", {
-			type: "application/pdf",
-		})
-		const result = await fillPdfForm(source, { name: "Kitsy" }, true)
-		const output = await PDFDocument.load(await result.blob.arrayBuffer())
-
-		expect(result.name).toBe("form-filled.pdf")
-		expect(output.getForm().getFields()).toHaveLength(0)
 	})
 
 	it("deletePdfPages removes a page from a 3-page PDF", async () => {

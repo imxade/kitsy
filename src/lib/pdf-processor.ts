@@ -5,14 +5,9 @@ import forge from "node-forge"
 import zgaPdfSigner from "zgapdfsigner"
 import type { PdfSigner as PdfSignerClass } from "zgapdfsigner"
 import {
-	PDFCheckBox,
 	PDFDocument,
-	PDFDropdown,
 	PDFName,
-	PDFOptionList,
-	PDFRadioGroup,
 	StandardFonts,
-	PDFTextField,
 	degrees,
 	rgb,
 	type PDFFont,
@@ -410,40 +405,6 @@ export async function comparePdfText(
 			type: "application/json",
 		}),
 		name: "pdf-text-comparison.json",
-	}
-}
-
-export async function fillPdfForm(
-	file: File,
-	values: Record<string, string | boolean | string[]>,
-	flatten: boolean,
-): Promise<ProcessedFile> {
-	const document = await PDFDocument.load(await file.arrayBuffer(), {
-		ignoreEncryption: true,
-	})
-	const form = document.getForm()
-	const fields = new Map(
-		form.getFields().map((field) => [field.getName(), field]),
-	)
-	for (const [name, value] of Object.entries(values)) {
-		const field = fields.get(name)
-		if (!field) throw new Error(`No form field named "${name}" was found`)
-		if (field instanceof PDFTextField) field.setText(String(value))
-		else if (field instanceof PDFCheckBox) {
-			if (value) field.check()
-			else field.uncheck()
-		} else if (field instanceof PDFRadioGroup) field.select(String(value))
-		else if (field instanceof PDFDropdown)
-			field.select(Array.isArray(value) ? value : String(value))
-		else if (field instanceof PDFOptionList)
-			field.select(Array.isArray(value) ? value : String(value))
-		else throw new Error(`The form field "${name}" is not supported`)
-	}
-	if (flatten) form.flatten()
-	const baseName = file.name.replace(/\.pdf$/i, "")
-	return {
-		blob: pdfBlob(await document.save()),
-		name: `${baseName}-filled.pdf`,
 	}
 }
 

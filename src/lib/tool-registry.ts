@@ -48,7 +48,6 @@ import {
 	flipPdf,
 	addPdfTextOverlay,
 	comparePdfText,
-	fillPdfForm,
 	addPageNumbers,
 	pdfToMarkdown,
 	flattenPdf,
@@ -2143,42 +2142,6 @@ const tools: ToolDefinition[] = [
 				String(options.color),
 			),
 		],
-	},
-	{
-		id: "pdf-fill-form",
-		name: "Fill PDF Form",
-		description: "Fill standard AcroForm fields with a JSON value map",
-		category: "pdf",
-		icon: "text",
-		acceptedExtensions: [".pdf"],
-		multiple: false,
-		keywords: ["acroform", "fill fields", "form pdf"],
-		options: [
-			{
-				id: "values",
-				label: "Field values (JSON)",
-				type: "text",
-				default: "{}",
-			},
-			{
-				id: "flatten",
-				label: "Flatten fields after filling",
-				type: "checkbox",
-				default: false,
-			},
-		],
-		process: async (files, options) => {
-			let values: Record<string, string | boolean | string[]>
-			try {
-				values = JSON.parse(String(options.values ?? "{}"))
-			} catch {
-				throw new Error("Field values must be a valid JSON object")
-			}
-			if (!values || Array.isArray(values) || typeof values !== "object") {
-				throw new Error("Field values must be a JSON object")
-			}
-			return [await fillPdfForm(files[0], values, Boolean(options.flatten))]
-		},
 	},
 	{
 		id: "pdf-flatten",
