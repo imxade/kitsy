@@ -2,10 +2,32 @@ import { useCallback, useEffect, useRef, useState } from "react"
 import { imagesToPdf } from "../lib/pdf-processor"
 import type { ProcessedFile } from "../lib/image-processor"
 import Icon from "./Icon"
+import ScannerCropEditor from "./ScannerCropEditor"
 
 interface ScannerPanelProps {
 	onResultsChange: (results: ProcessedFile[] | null) => void
 	onErrorChange: (error: string | null) => void
+}
+
+function ScanPagePreview({ file }: { file: File }) {
+	const [url, setUrl] = useState<string | null>(null)
+
+	useEffect(() => {
+		if (typeof URL.createObjectURL !== "function") return
+		const objectUrl = URL.createObjectURL(file)
+		setUrl(objectUrl)
+		return () => URL.revokeObjectURL(objectUrl)
+	}, [file])
+
+	return url ? (
+		<img
+			src={url}
+			alt=""
+			className="h-16 w-16 rounded-box bg-base-300 object-cover"
+		/>
+	) : (
+		<div className="h-16 w-16 rounded-box bg-base-300" aria-hidden="true" />
+	)
 }
 
 export default function ScannerPanel({
@@ -19,6 +41,7 @@ export default function ScannerPanel({
 	const [cameraActive, setCameraActive] = useState(false)
 	const [previewReady, setPreviewReady] = useState(false)
 	const [creating, setCreating] = useState(false)
+	const [cropPageIndex, setCropPageIndex] = useState<number | null>(null)
 
 	const stopCamera = useCallback(() => {
 		streamRef.current?.getTracks().forEach((track) => {
@@ -113,6 +136,33 @@ export default function ScannerPanel({
 			;[next[index], next[target]] = [next[target], next[index]]
 			return next
 		})
+		setCropPageIndex((current) => {
+			if (current === index) return index + direction
+			if (current === index + direction) return index
+			return current
+		})
+		onResultsChange(null)
+	}
+
+	const removePage = (index: number) => {
+		setPages((current) =>
+			current.filter((_, currentIndex) => currentIndex !== index),
+		)
+		setCropPageIndex((current) => {
+			if (current === index) return null
+			if (current !== null && current > index) return current - 1
+			return current
+		})
+		onResultsChange(null)
+	}
+
+	const replaceCroppedPage = (index: number, file: File) => {
+		setPages((current) =>
+			current.map((currentFile, currentIndex) =>
+				currentIndex === index ? file : currentFile,
+			),
+		)
+		setCropPageIndex(null)
 		onResultsChange(null)
 	}
 
@@ -205,9 +255,17 @@ export default function ScannerPanel({
 								key={`${page.name}-${index}`}
 								className="flex items-center gap-2 rounded-box bg-base-200 px-3 py-2"
 							>
+								<ScanPagePreview file={page} />
 								<span className="min-w-0 flex-1 truncate text-sm">
 									{index + 1}. {page.name}
 								</span>
+								<button
+									type="button"
+									className="btn btn-outline btn-xs"
+									onClick={() => setCropPageIndex(index)}
+								>
+									Crop
+								</button>
 								<button
 									type="button"
 									className="btn btn-ghost btn-xs"
@@ -230,19 +288,20 @@ export default function ScannerPanel({
 									type="button"
 									className="btn btn-ghost btn-xs"
 									aria-label="Remove page"
-									onClick={() => {
-										setPages((current) =>
-											current.filter(
-												(_, currentIndex) => currentIndex !== index,
-											),
-										)
-										onResultsChange(null)
-									}}
+									onClick={() => removePage(index)}
 								>
 									<Icon name="close" size={14} />
 								</button>
 							</div>
 						))}
+						{cropPageIndex !== null && pages[cropPageIndex] && (
+							<ScannerCropEditor
+								file={pages[cropPageIndex]}
+								onApply={(file) => replaceCroppedPage(cropPageIndex, file)}
+								onCancel={() => setCropPageIndex(null)}
+								onError={onErrorChange}
+							/>
+						)}
 						<button
 							type="button"
 							className="btn btn-primary"

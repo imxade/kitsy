@@ -16,11 +16,21 @@ vi.mock("../../src/lib/pdf-processor", () => ({
 	})),
 }))
 
+vi.mock("../../src/lib/image-processor", () => ({
+	cropImage: vi.fn(async () => ({
+		blob: new Blob(["cropped"], { type: "image/jpeg" }),
+		name: "first-cropped.jpg",
+	})),
+}))
+
 import ScannerPanel from "../../src/components/ScannerPanel"
+import { cropImage } from "../../src/lib/image-processor"
 
 describe("ScannerPanel", () => {
 	beforeEach(() => {
 		vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue(undefined)
+		vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:scanner-preview")
+		vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => undefined)
 	})
 
 	afterEach(() => {
@@ -78,6 +88,47 @@ describe("ScannerPanel", () => {
 			])
 		})
 		expect(onErrorChange).toHaveBeenCalledWith(null)
+	})
+
+	it("previews and crops a selected local page before PDF creation", async () => {
+		render(<ScannerPanel onResultsChange={vi.fn()} onErrorChange={vi.fn()} />)
+		const source = new File(["first"], "first.jpg", { type: "image/jpeg" })
+		fireEvent.change(screen.getByTestId("scanner-image-input"), {
+			target: { files: [source] },
+		})
+
+		fireEvent.click(await screen.findByRole("button", { name: "Crop" }))
+		const preview = (await screen.findByAltText(
+			"Selected scan crop preview",
+		)) as HTMLImageElement
+		Object.defineProperty(preview, "naturalWidth", {
+			configurable: true,
+			value: 1200,
+		})
+		Object.defineProperty(preview, "naturalHeight", {
+			configurable: true,
+			value: 800,
+		})
+		fireEvent.load(preview)
+
+		fireEvent.change(screen.getByLabelText("Crop Width"), {
+			target: { value: "1000" },
+		})
+		fireEvent.change(screen.getByLabelText("Crop Height"), {
+			target: { value: "600" },
+		})
+		fireEvent.change(screen.getByLabelText("Crop X"), {
+			target: { value: "100" },
+		})
+		fireEvent.change(screen.getByLabelText("Crop Y"), {
+			target: { value: "50" },
+		})
+		fireEvent.click(screen.getByTestId("scanner-apply-crop"))
+
+		await waitFor(() => {
+			expect(cropImage).toHaveBeenCalledWith(source, 100, 50, 1000, 600)
+		})
+		expect(await screen.findByText(/first-cropped\.jpg/)).toBeTruthy()
 	})
 
 	it("uses the same aspect-video preview treatment as camera recording", () => {
