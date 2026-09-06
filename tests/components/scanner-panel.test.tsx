@@ -131,6 +131,92 @@ describe("ScannerPanel", () => {
 		expect(await screen.findByText(/first-cropped\.jpg/)).toBeTruthy()
 	})
 
+	it("moves and resizes the crop selection directly on the scan preview", async () => {
+		render(<ScannerPanel onResultsChange={vi.fn()} onErrorChange={vi.fn()} />)
+		const source = new File(["first"], "first.jpg", { type: "image/jpeg" })
+		fireEvent.change(screen.getByTestId("scanner-image-input"), {
+			target: { files: [source] },
+		})
+
+		fireEvent.click(await screen.findByRole("button", { name: "Crop" }))
+		const preview = (await screen.findByAltText(
+			"Selected scan crop preview",
+		)) as HTMLImageElement
+		Object.defineProperty(preview, "naturalWidth", {
+			configurable: true,
+			value: 1200,
+		})
+		Object.defineProperty(preview, "naturalHeight", {
+			configurable: true,
+			value: 800,
+		})
+		Object.defineProperty(preview, "clientWidth", {
+			configurable: true,
+			value: 600,
+		})
+		Object.defineProperty(preview, "clientHeight", {
+			configurable: true,
+			value: 400,
+		})
+		vi.spyOn(preview, "getBoundingClientRect").mockReturnValue({
+			width: 600,
+			height: 400,
+			top: 0,
+			left: 0,
+			bottom: 400,
+			right: 600,
+			x: 0,
+			y: 0,
+			toJSON: () => ({}),
+		})
+		fireEvent.load(preview)
+
+		fireEvent.change(screen.getByLabelText("Crop Width"), {
+			target: { value: "800" },
+		})
+		fireEvent.change(screen.getByLabelText("Crop Height"), {
+			target: { value: "500" },
+		})
+		fireEvent.change(screen.getByLabelText("Crop X"), {
+			target: { value: "100" },
+		})
+		fireEvent.change(screen.getByLabelText("Crop Y"), {
+			target: { value: "50" },
+		})
+
+		fireEvent.pointerDown(screen.getByTestId("scanner-crop-selection"), {
+			clientX: 100,
+			clientY: 100,
+		})
+		fireEvent.pointerMove(window, { clientX: 150, clientY: 125 })
+		fireEvent.pointerUp(window)
+
+		await waitFor(() => {
+			expect((screen.getByLabelText("Crop X") as HTMLInputElement).value).toBe(
+				"200",
+			)
+			expect((screen.getByLabelText("Crop Y") as HTMLInputElement).value).toBe(
+				"100",
+			)
+		})
+
+		fireEvent.pointerDown(screen.getByTestId("scanner-crop-resize-handle"), {
+			clientX: 100,
+			clientY: 100,
+		})
+		fireEvent.pointerMove(window, { clientX: 150, clientY: 125 })
+		fireEvent.pointerUp(window)
+
+		await waitFor(() => {
+			expect(
+				(screen.getByLabelText("Crop Width") as HTMLInputElement).value,
+			).toBe("900")
+			expect(
+				(screen.getByLabelText("Crop Height") as HTMLInputElement).value,
+			).toBe("550")
+		})
+	})
+
 	it("uses the same aspect-video preview treatment as camera recording", () => {
 		Object.defineProperty(navigator, "mediaDevices", {
 			configurable: true,

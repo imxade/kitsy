@@ -15,6 +15,8 @@ interface ScannerCropEditorProps {
 	onError: (message: string) => void
 }
 
+type CropGestureMode = "move" | "resize" | null
+
 function clampCrop(
 	crop: CropBox,
 	imageWidth: number,
@@ -46,6 +48,23 @@ export default function ScannerCropEditor({
 		height: 0,
 	})
 	const [isCropping, setIsCropping] = useState(false)
+	const [activeGesture, setActiveGesture] = useState<CropGestureMode>(null)
+	const cropRef = useRef(crop)
+	const imageSizeRef = useRef(imageSize)
+	const gestureRef = useRef({
+		startX: 0,
+		startY: 0,
+		scale: 1,
+		origin: crop,
+	})
+
+	useEffect(() => {
+		cropRef.current = crop
+	}, [crop])
+
+	useEffect(() => {
+		imageSizeRef.current = imageSize
+	}, [imageSize])
 
 	useEffect(() => {
 		const objectUrl = URL.createObjectURL(file)
@@ -63,6 +82,56 @@ export default function ScannerCropEditor({
 				imageSize.height,
 			),
 		)
+	}
+
+	useEffect(() => {
+		if (!activeGesture) return
+
+		const handleMove = (event: PointerEvent) => {
+			if (event.cancelable) event.preventDefault()
+			const { origin, scale, startX, startY } = gestureRef.current
+			const dx = (event.clientX - startX) / scale
+			const dy = (event.clientY - startY) / scale
+			const next =
+				activeGesture === "move"
+					? { ...origin, x: origin.x + dx, y: origin.y + dy }
+					: {
+							...origin,
+							width: origin.width + dx,
+							height: origin.height + dy,
+						}
+			const bounds = imageSizeRef.current
+			setCrop(clampCrop(next, bounds.width, bounds.height))
+		}
+
+		const finishGesture = () => setActiveGesture(null)
+		window.addEventListener("pointermove", handleMove, { passive: false })
+		window.addEventListener("pointerup", finishGesture)
+		window.addEventListener("pointercancel", finishGesture)
+		return () => {
+			window.removeEventListener("pointermove", handleMove)
+			window.removeEventListener("pointerup", finishGesture)
+			window.removeEventListener("pointercancel", finishGesture)
+		}
+	}, [activeGesture])
+
+	const beginGesture = (
+		event: React.PointerEvent<HTMLDivElement>,
+		mode: Exclude<CropGestureMode, null>,
+	) => {
+		if (!imageRef.current || imageSize.width === 0) return
+		event.preventDefault()
+		event.stopPropagation()
+		const displayedWidth = imageRef.current.getBoundingClientRect().width
+		const scale = displayedWidth / imageSize.width
+		if (scale <= 0) return
+		gestureRef.current = {
+			startX: event.clientX,
+			startY: event.clientY,
+			scale,
+			origin: cropRef.current,
+		}
+		setActiveGesture(mode)
 	}
 
 	const apply = async () => {
@@ -97,7 +166,7 @@ export default function ScannerCropEditor({
 				<div>
 					<h3 className="font-semibold">Crop selected page</h3>
 					<p className="text-sm text-base-content/60">
-						Set the crop bounds in source-image pixels.
+						Drag the crop box to move it, or its corner to resize it.
 					</p>
 				</div>
 				<button
@@ -128,15 +197,34 @@ export default function ScannerCropEditor({
 							/>
 						)}
 						{hasImage && displayWidth > 0 && displayHeight > 0 && (
+							// biome-ignore lint/a11y/useSemanticElements: Pointer-operated crop selection
 							<div
-								className="pointer-events-none absolute border-2 border-primary bg-primary/10"
+								role="button"
+								tabIndex={0}
+								aria-label="Move crop selection"
+								className="absolute cursor-move border-2 border-primary bg-primary/10"
 								style={{
 									left: `${(crop.x / imageSize.width) * 100}%`,
 									top: `${(crop.y / imageSize.height) * 100}%`,
 									width: `${(crop.width / imageSize.width) * 100}%`,
 									height: `${(crop.height / imageSize.height) * 100}%`,
+									touchAction: "none",
 								}}
-							/>
+								onPointerDown={(event) => beginGesture(event, "move")}
+								onKeyDown={() => {}}
+								data-testid="scanner-crop-selection"
+							>
+								{/* biome-ignore lint/a11y/useSemanticElements: Pointer-operated crop resize handle */}
+								<div
+									role="button"
+									tabIndex={0}
+									aria-label="Resize crop selection"
+									className="absolute -right-2 -bottom-2 h-4 w-4 cursor-se-resize rounded-full border-2 border-base-100/50 bg-primary shadow-md"
+									onPointerDown={(event) => beginGesture(event, "resize")}
+									onKeyDown={() => {}}
+									data-testid="scanner-crop-resize-handle"
+								/>
+							</div>
 						)}
 					</div>
 				</div>
