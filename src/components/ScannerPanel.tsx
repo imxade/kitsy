@@ -192,7 +192,7 @@ export default function ScannerPanel({
 							autoPlay
 							muted
 							playsInline
-							className="aspect-video w-full object-cover"
+							className="aspect-video w-full"
 							onLoadedMetadata={() => setPreviewReady(true)}
 							data-testid="scanner-preview"
 						/>

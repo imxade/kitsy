@@ -79,4 +79,23 @@ describe("ScannerPanel", () => {
 		})
 		expect(onErrorChange).toHaveBeenCalledWith(null)
 	})
+
+	it("uses the same aspect-video preview treatment as camera recording", () => {
+		Object.defineProperty(navigator, "mediaDevices", {
+			configurable: true,
+			value: {
+				getUserMedia: async () => ({ getTracks: () => [] }),
+			},
+		})
+		vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue(undefined)
+
+		render(<ScannerPanel onResultsChange={vi.fn()} onErrorChange={vi.fn()} />)
+		fireEvent.click(screen.getByText("Start camera"))
+
+		return screen.findByTestId("scanner-preview").then((preview) => {
+			expect(preview.className).toContain("aspect-video")
+			expect(preview.className).toContain("w-full")
+			expect(preview.className).not.toContain("object-cover")
+		})
+	})
 })
