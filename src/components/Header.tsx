@@ -58,7 +58,7 @@ export default function Header() {
 						)}
 					</button>
 					<a
-						href="http://github.com/imxade/Kitsy"
+						href="https://github.com/imxade/Kitsy"
 						target="_blank"
 						rel="noreferrer"
 						className="btn btn-ghost btn-circle btn-sm"
@@ -66,6 +66,28 @@ export default function Header() {
 					>
 						<span className="sr-only">GitHub Repository</span>
 						<Icon name="github" />
+					</a>
+					<a
+						href="https://www.linkedin.com/in/basakrituraj"
+						target="_blank"
+						rel="noreferrer"
+						className="btn btn-ghost btn-circle btn-sm"
+						aria-label="LinkedIn Profile"
+						title="LinkedIn (basakrituraj)"
+					>
+						<span className="sr-only">LinkedIn</span>
+						<Icon name="linkedin" />
+					</a>
+					<a
+						href="https://x.com/riturajbasak"
+						target="_blank"
+						rel="noreferrer"
+						className="btn btn-ghost btn-circle btn-sm"
+						aria-label="Twitter Profile"
+						title="Twitter (@riturajbasak)"
+					>
+						<span className="sr-only">Twitter</span>
+						<Icon name="twitter" />
 					</a>
 					<DebugConsole />
 					<ThemeToggle />
