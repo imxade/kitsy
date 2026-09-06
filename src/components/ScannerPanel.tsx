@@ -17,6 +17,7 @@ export default function ScannerPanel({
 	const streamRef = useRef<MediaStream | null>(null)
 	const [pages, setPages] = useState<File[]>([])
 	const [cameraActive, setCameraActive] = useState(false)
+	const [previewReady, setPreviewReady] = useState(false)
 	const [creating, setCreating] = useState(false)
 
 	const stopCamera = useCallback(() => {
@@ -26,9 +27,20 @@ export default function ScannerPanel({
 		streamRef.current = null
 		if (videoRef.current) videoRef.current.srcObject = null
 		setCameraActive(false)
+		setPreviewReady(false)
 	}, [])
 
 	useEffect(() => stopCamera, [stopCamera])
+
+	useEffect(() => {
+		if (!cameraActive || !streamRef.current || !videoRef.current) return
+
+		const video = videoRef.current
+		video.muted = true
+		video.playsInline = true
+		video.srcObject = streamRef.current
+		void video.play().catch(() => undefined)
+	}, [cameraActive])
 
 	const startCamera = async () => {
 		onErrorChange(null)
@@ -43,10 +55,7 @@ export default function ScannerPanel({
 				audio: false,
 			})
 			streamRef.current = stream
-			if (videoRef.current) {
-				videoRef.current.srcObject = stream
-				await videoRef.current.play()
-			}
+			setPreviewReady(false)
 			setCameraActive(true)
 		} catch (error) {
 			onErrorChange(
@@ -59,7 +68,12 @@ export default function ScannerPanel({
 
 	const capturePage = async () => {
 		const video = videoRef.current
-		if (!video || video.videoWidth === 0 || video.videoHeight === 0) {
+		if (
+			!previewReady ||
+			!video ||
+			video.videoWidth === 0 ||
+			video.videoHeight === 0
+		) {
 			onErrorChange("Wait for the camera preview before capturing a page.")
 			return
 		}
@@ -138,6 +152,7 @@ export default function ScannerPanel({
 								type="button"
 								className="btn btn-outline btn-sm"
 								onClick={capturePage}
+								disabled={!previewReady}
 							>
 								Capture page
 							</button>
@@ -171,12 +186,17 @@ export default function ScannerPanel({
 					/>
 				</div>
 				{cameraActive && (
-					<video
-						ref={videoRef}
-						muted
-						playsInline
-						className="w-full max-h-96 rounded-box bg-black object-contain"
-					/>
+					<div className="overflow-hidden rounded-2xl border border-base-content/10 bg-neutral">
+						<video
+							ref={videoRef}
+							autoPlay
+							muted
+							playsInline
+							className="aspect-video w-full object-cover"
+							onLoadedMetadata={() => setPreviewReady(true)}
+							data-testid="scanner-preview"
+						/>
+					</div>
 				)}
 				{pages.length > 0 && (
 					<div className="flex flex-col gap-2">

@@ -7,7 +7,7 @@ import {
 	screen,
 	waitFor,
 } from "@testing-library/react"
-import { afterEach, describe, expect, it, vi } from "vitest"
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 vi.mock("../../src/lib/pdf-processor", () => ({
 	imagesToPdf: vi.fn(async (files: File[]) => ({
@@ -19,7 +19,34 @@ vi.mock("../../src/lib/pdf-processor", () => ({
 import ScannerPanel from "../../src/components/ScannerPanel"
 
 describe("ScannerPanel", () => {
-	afterEach(cleanup)
+	beforeEach(() => {
+		vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue(undefined)
+	})
+
+	afterEach(() => {
+		cleanup()
+		vi.restoreAllMocks()
+	})
+
+	it("mounts the camera preview before attaching its stream", async () => {
+		const stream = {
+			getTracks: () => [{ stop: vi.fn() }],
+		} as unknown as MediaStream
+		Object.defineProperty(navigator, "mediaDevices", {
+			configurable: true,
+			value: { getUserMedia: vi.fn(async () => stream) },
+		})
+
+		render(<ScannerPanel onResultsChange={vi.fn()} onErrorChange={vi.fn()} />)
+		fireEvent.click(screen.getByRole("button", { name: "Start camera" }))
+
+		const preview = (await screen.findByTestId(
+			"scanner-preview",
+		)) as HTMLVideoElement
+		await waitFor(() => expect(preview.srcObject).toBe(stream))
+		expect(HTMLMediaElement.prototype.play).toHaveBeenCalled()
+		expect(preview.className).toContain("aspect-video")
+	})
 
 	it("accepts local image pages, allows reordering, and creates a PDF", async () => {
 		const onResultsChange = vi.fn()
