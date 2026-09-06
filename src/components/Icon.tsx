@@ -46,6 +46,11 @@ import {
 	IconCloudOff,
 	IconCloudCheck,
 	IconWand,
+	IconCamera,
+	IconCameraRotate,
+	IconPlayerRecordFilled,
+	IconPlayerStopFilled,
+	IconPhotoPlus,
 } from "@tabler/icons-react"
 
 export const ICON_MAP = {
@@ -95,6 +100,11 @@ export const ICON_MAP = {
 	"cloud-off": IconCloudOff,
 	"cloud-check": IconCloudCheck,
 	wand: IconWand,
+	camera: IconCamera,
+	"camera-rotate": IconCameraRotate,
+	record: IconPlayerRecordFilled,
+	stop: IconPlayerStopFilled,
+	"photo-plus": IconPhotoPlus,
 } as const
 
 export type IconName = keyof typeof ICON_MAP

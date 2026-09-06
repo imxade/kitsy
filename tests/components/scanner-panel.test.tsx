@@ -55,7 +55,9 @@ describe("ScannerPanel", () => {
 		)) as HTMLVideoElement
 		await waitFor(() => expect(preview.srcObject).toBe(stream))
 		expect(HTMLMediaElement.prototype.play).toHaveBeenCalled()
-		expect(preview.className).toContain("aspect-video")
+		expect(preview.className).toContain("w-full")
+		expect(preview.className).toContain("h-auto")
+		expect(preview.className).not.toContain("aspect-video")
 	})
 
 	it("accepts local image pages, allows reordering, and creates a PDF", async () => {
@@ -221,11 +223,19 @@ describe("ScannerPanel", () => {
 		})
 	})
 
-	it("uses the same aspect-video preview treatment as camera recording", () => {
+	it("adapts preview to camera aspect ratio with full width and auto height", () => {
+		const track = {
+			kind: "video",
+			stop: vi.fn(),
+			getSettings: () => ({ width: 1600, height: 1200 }),
+		}
 		Object.defineProperty(navigator, "mediaDevices", {
 			configurable: true,
 			value: {
-				getUserMedia: async () => ({ getTracks: () => [] }),
+				getUserMedia: async () => ({
+					getTracks: () => [track],
+					getVideoTracks: () => [track],
+				}),
 			},
 		})
 		vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue(undefined)
@@ -234,9 +244,80 @@ describe("ScannerPanel", () => {
 		fireEvent.click(screen.getByText("Start camera"))
 
 		return screen.findByTestId("scanner-preview").then((preview) => {
-			expect(preview.className).toContain("aspect-video")
 			expect(preview.className).toContain("w-full")
-			expect(preview.className).not.toContain("object-cover")
+			expect(preview.className).toContain("h-auto")
+			expect(preview.className).not.toContain("aspect-video")
+			expect((preview as HTMLElement).style.aspectRatio).toBe("1600 / 1200")
 		})
+	})
+
+	it("allows switching and flipping cameras with camera UI controls", async () => {
+		const rearTrack = {
+			kind: "video",
+			stop: vi.fn(),
+			getSettings: () => ({
+				deviceId: "rear-cam-id",
+				facingMode: "environment",
+				width: 1920,
+				height: 1080,
+			}),
+		}
+		const frontTrack = {
+			kind: "video",
+			stop: vi.fn(),
+			getSettings: () => ({
+				deviceId: "front-cam-id",
+				facingMode: "user",
+				width: 1280,
+				height: 720,
+			}),
+		}
+
+		const getUserMediaMock = vi.fn(
+			async (constraints: MediaStreamConstraints) => {
+				const videoConstraints = constraints.video as
+					| MediaTrackConstraints
+					| undefined
+				const isFront =
+					(videoConstraints?.deviceId as { exact?: string })?.exact ===
+						"front-cam-id" ||
+					(videoConstraints?.facingMode as { ideal?: string })?.ideal === "user"
+				const track = isFront ? frontTrack : rearTrack
+				return {
+					getTracks: () => [track],
+					getVideoTracks: () => [track],
+				}
+			},
+		)
+
+		Object.defineProperty(navigator, "mediaDevices", {
+			configurable: true,
+			value: {
+				getUserMedia: getUserMediaMock,
+				enumerateDevices: async () => [
+					{
+						kind: "videoinput",
+						deviceId: "rear-cam-id",
+						label: "Back Camera",
+					},
+					{
+						kind: "videoinput",
+						deviceId: "front-cam-id",
+						label: "Front Camera",
+					},
+				],
+			},
+		})
+		vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue(undefined)
+
+		render(<ScannerPanel onResultsChange={vi.fn()} onErrorChange={vi.fn()} />)
+		fireEvent.click(screen.getByText("Start camera"))
+
+		await screen.findByTestId("scanner-preview")
+		expect(screen.getByTestId("scanner-capture-page")).toBeTruthy()
+		expect(screen.getByTestId("scanner-flip-camera")).toBeTruthy()
+
+		fireEvent.click(screen.getByTestId("scanner-flip-camera"))
+		await waitFor(() => expect(getUserMediaMock).toHaveBeenCalledTimes(2))
 	})
 })

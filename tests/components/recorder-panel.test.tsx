@@ -174,4 +174,108 @@ describe("RecorderPanel", () => {
 		await waitFor(() => expect(onResultsChange).toHaveBeenCalled())
 		expect(onErrorChange).toHaveBeenCalledWith(null)
 	})
+
+	it("adapts camera recording preview to camera aspect ratio with full width and auto height", async () => {
+		delete window.__KITSY_RECORDER_E2E__
+
+		class MockCameraTrack {
+			kind = "video"
+			stop = vi.fn()
+			getSettings = () => ({ width: 1920, height: 1080 })
+		}
+		class MockCameraStream {
+			tracks = [new MockCameraTrack()]
+			getTracks = () => this.tracks
+			getVideoTracks = () => this.tracks
+			getAudioTracks = () => []
+		}
+
+		class MockRecorder {
+			state = "inactive"
+			ondataavailable: ((event: { data: Blob }) => void) | null = null
+			onstop: (() => void) | null = null
+			onerror: (() => void) | null = null
+			start = vi.fn(() => {
+				this.state = "recording"
+			})
+			stop = vi.fn(() => {
+				this.state = "inactive"
+				this.onstop?.()
+			})
+		}
+		Object.defineProperty(window, "MediaRecorder", {
+			configurable: true,
+			value: MockRecorder,
+		})
+
+		Object.defineProperty(navigator, "mediaDevices", {
+			configurable: true,
+			value: {
+				getUserMedia: vi.fn(async () => new MockCameraStream()),
+			},
+		})
+		vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue(undefined)
+
+		render(
+			<RecorderPanel
+				kind="camera"
+				onResultsChange={vi.fn()}
+				onErrorChange={vi.fn()}
+			/>,
+		)
+
+		const preview = screen.getByTestId("recorder-preview")
+		expect(preview.className).toContain("w-full")
+		expect(preview.className).toContain("h-auto")
+		expect(preview.className).not.toContain("aspect-video")
+
+		fireEvent.click(screen.getByTestId("recorder-toggle"))
+		await waitFor(() => {
+			expect(preview.style.aspectRatio).toBe("1920 / 1080")
+		})
+	})
+
+	it("allows selecting camera device and flipping camera before recording", async () => {
+		delete window.__KITSY_RECORDER_E2E__
+
+		Object.defineProperty(navigator, "mediaDevices", {
+			configurable: true,
+			value: {
+				enumerateDevices: async () => [
+					{
+						kind: "videoinput",
+						deviceId: "back-camera-id",
+						label: "Back Camera",
+					},
+					{
+						kind: "videoinput",
+						deviceId: "front-camera-id",
+						label: "Front Camera",
+					},
+				],
+			},
+		})
+
+		render(
+			<RecorderPanel
+				kind="camera"
+				onResultsChange={vi.fn()}
+				onErrorChange={vi.fn()}
+			/>,
+		)
+
+		const cameraSelect = (await screen.findByTestId(
+			"recorder-camera-select",
+		)) as HTMLSelectElement
+		expect(cameraSelect).toBeTruthy()
+		expect(screen.getByTestId("recorder-flip-camera")).toBeTruthy()
+
+		fireEvent.change(cameraSelect, {
+			target: { value: "back-camera-id" },
+		})
+		expect(cameraSelect.value).toBe("back-camera-id")
+
+		fireEvent.click(screen.getByTestId("recorder-flip-camera"))
+		expect(cameraSelect.value).toBe("front-camera-id")
+	})
 })

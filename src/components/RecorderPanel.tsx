@@ -1,4 +1,10 @@
-import { useEffect, useRef, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
+import {
+	type CameraDevice,
+	type CameraFacingMode,
+	enumerateVideoDevices,
+	requestCameraStream,
+} from "../lib/camera"
 import type { ProcessedFile } from "../lib/image-processor"
 import {
 	DEFAULT_OVERLAY_RECT,
@@ -51,10 +57,71 @@ export default function RecorderPanel({
 	const [includeSystemAudio, setIncludeSystemAudio] = useState(false)
 	const [overlayRect, setOverlayRect] =
 		useState<OverlayRect>(DEFAULT_OVERLAY_RECT)
+	const [cameraAspectRatio, setCameraAspectRatio] = useState<string | null>(
+		null,
+	)
+	const [screenAspectRatio, setScreenAspectRatio] = useState<string | null>(
+		null,
+	)
+	const [videoDevices, setVideoDevices] = useState<CameraDevice[]>([])
+	const [facingMode, setFacingMode] = useState<CameraFacingMode>("user")
+	const [selectedDeviceId, setSelectedDeviceId] = useState("")
+
+	const refreshDevices = useCallback(async () => {
+		const devices = await enumerateVideoDevices()
+		setVideoDevices(devices)
+		return devices
+	}, [])
+
+	useEffect(() => {
+		void refreshDevices()
+		if (
+			typeof navigator === "undefined" ||
+			!navigator.mediaDevices?.addEventListener
+		) {
+			return
+		}
+		const handleDeviceChange = () => void refreshDevices()
+		navigator.mediaDevices.addEventListener("devicechange", handleDeviceChange)
+		return () => {
+			navigator.mediaDevices.removeEventListener(
+				"devicechange",
+				handleDeviceChange,
+			)
+		}
+	}, [refreshDevices])
+
 	const overlayRectRef = useRef(DEFAULT_OVERLAY_RECT)
 	const overlayElementRef = useRef<HTMLDivElement>(null)
 	const overlayAnimationFrameRef = useRef<number | null>(null)
 	const pendingOverlayRectRef = useRef<OverlayRect | null>(null)
+
+	const updateCameraAspectRatio = useCallback((video: HTMLVideoElement) => {
+		if (video.videoWidth && video.videoHeight) {
+			setCameraAspectRatio(`${video.videoWidth} / ${video.videoHeight}`)
+		}
+	}, [])
+
+	const flipCamera = () => {
+		const nextFacing: CameraFacingMode =
+			facingMode === "environment" ? "user" : "environment"
+		setFacingMode(nextFacing)
+
+		const matching = videoDevices.find((d) => d.facingMode === nextFacing)
+		const nextDeviceId = matching ? matching.deviceId : ""
+		setSelectedDeviceId(nextDeviceId)
+	}
+
+	const handleCameraSelect = (value: string) => {
+		if (value === "user" || value === "environment") {
+			setFacingMode(value)
+			setSelectedDeviceId("")
+		} else {
+			const dev = videoDevices.find((d) => d.deviceId === value)
+			setSelectedDeviceId(value)
+			if (dev?.facingMode) setFacingMode(dev.facingMode)
+		}
+	}
 
 	const canvasRef = useRef<HTMLCanvasElement>(null)
 	const previewVideoRef = useRef<HTMLVideoElement>(null)
@@ -236,6 +303,8 @@ export default function RecorderPanel({
 		activeStreamRef.current = null
 		displayStreamRef.current = null
 		cameraStreamRef.current = null
+		setCameraAspectRatio(null)
+		setScreenAspectRatio(null)
 		if (previewVideoRef.current) previewVideoRef.current.srcObject = null
 		if (hiddenScreenVideoRef.current)
 			hiddenScreenVideoRef.current.srcObject = null
@@ -281,14 +350,30 @@ export default function RecorderPanel({
 					video: false,
 				})
 			} else if (kind === "camera") {
-				recordingStream = await navigator.mediaDevices.getUserMedia({
-					video: true,
-					audio: includeMicrophone,
-				})
+				recordingStream = await requestCameraStream(
+					selectedDeviceId || null,
+					facingMode,
+					includeMicrophone,
+				)
+				const track = recordingStream.getVideoTracks?.()?.[0]
+				const settings = track?.getSettings?.()
+				if (settings?.width && settings?.height) {
+					setCameraAspectRatio(`${settings.width} / ${settings.height}`)
+				}
+				if (
+					settings?.facingMode === "user" ||
+					settings?.facingMode === "environment"
+				) {
+					setFacingMode(settings.facingMode)
+				}
+				if (settings?.deviceId) {
+					setSelectedDeviceId(settings.deviceId)
+				}
 				if (previewVideoRef.current) {
 					previewVideoRef.current.srcObject = recordingStream
 					await waitForPlayback(previewVideoRef.current)
 				}
+				void refreshDevices()
 			} else {
 				displayStream = await navigator.mediaDevices.getDisplayMedia({
 					video: {
@@ -296,12 +381,18 @@ export default function RecorderPanel({
 					},
 					audio: includeSystemAudio,
 				})
+				const screenTrack = displayStream.getVideoTracks?.()?.[0]
+				const settings = screenTrack?.getSettings?.()
+				if (settings?.width && settings?.height) {
+					setScreenAspectRatio(`${settings.width} / ${settings.height}`)
+				}
 				cameraStream =
 					includeCamera || includeMicrophone
-						? await navigator.mediaDevices.getUserMedia({
-								video: includeCamera,
-								audio: includeMicrophone,
-							})
+						? await requestCameraStream(
+								selectedDeviceId || null,
+								facingMode,
+								includeMicrophone,
+							)
 						: null
 				const mixedAudioTracks = createMixedAudioTracks([
 					includeSystemAudio ? displayStream : null,
@@ -455,16 +546,58 @@ export default function RecorderPanel({
 				)}
 
 				{kind === "camera" && (
-					<label className="label cursor-pointer justify-start gap-3 rounded-xl border border-base-content/10 px-3 py-2">
-						<input
-							type="checkbox"
-							className="checkbox checkbox-primary checkbox-sm"
-							checked={includeMicrophone}
-							onChange={(event) => setIncludeMicrophone(event.target.checked)}
-							disabled={isRecording}
-						/>
-						<span className="label-text">Include microphone audio</span>
-					</label>
+					<div className="flex flex-wrap items-center justify-between gap-3">
+						<div className="flex items-center gap-2">
+							<label className="label cursor-pointer justify-start gap-2 rounded-xl border border-base-content/10 px-3 py-1.5">
+								<Icon name="camera" size={16} className="opacity-70" />
+								<span className="label-text text-xs font-semibold">
+									Camera:
+								</span>
+								<select
+									aria-label="Select camera device"
+									data-testid="recorder-camera-select"
+									className="select select-ghost select-xs text-xs font-medium focus:outline-none cursor-pointer"
+									disabled={isRecording}
+									value={selectedDeviceId || facingMode}
+									onChange={(e) => handleCameraSelect(e.target.value)}
+								>
+									<option value="user">Front Camera (Selfie)</option>
+									<option value="environment">Back Camera</option>
+									{videoDevices.map((device, idx) => (
+										<option
+											key={device.deviceId || idx}
+											value={device.deviceId}
+										>
+											{device.label}
+										</option>
+									))}
+								</select>
+							</label>
+
+							<button
+								type="button"
+								className="btn btn-circle btn-sm btn-outline border-base-content/10"
+								onClick={flipCamera}
+								disabled={isRecording}
+								aria-label="Switch camera"
+								title="Switch camera"
+								data-testid="recorder-flip-camera"
+							>
+								<Icon name="camera-rotate" size={16} />
+							</button>
+						</div>
+
+						<label className="label cursor-pointer justify-start gap-2 rounded-xl border border-base-content/10 px-3 py-1.5">
+							<input
+								type="checkbox"
+								className="checkbox checkbox-primary checkbox-xs"
+								checked={includeMicrophone}
+								onChange={(event) => setIncludeMicrophone(event.target.checked)}
+								disabled={isRecording}
+							/>
+							<span className="label-text text-xs">Include microphone</span>
+						</label>
+					</div>
 				)}
 
 				{kind === "screen" && (
@@ -474,7 +607,14 @@ export default function RecorderPanel({
 					>
 						<canvas
 							ref={canvasRef}
-							className="aspect-video w-full"
+							className="block h-auto w-full"
+							style={
+								screenAspectRatio
+									? { aspectRatio: `${screenAspectRatio}` }
+									: isRecording
+										? undefined
+										: { aspectRatio: "16 / 9" }
+							}
 							data-testid="recorder-preview"
 						/>
 						{includeCamera && (
@@ -557,7 +697,23 @@ export default function RecorderPanel({
 							autoPlay
 							muted
 							playsInline
-							className="aspect-video w-full"
+							className="block h-auto w-full"
+							style={
+								cameraAspectRatio
+									? { aspectRatio: `${cameraAspectRatio}` }
+									: isRecording
+										? undefined
+										: { aspectRatio: "16 / 9" }
+							}
+							onLoadedMetadata={(event) => {
+								updateCameraAspectRatio(event.currentTarget)
+							}}
+							onLoadedData={(event) => {
+								updateCameraAspectRatio(event.currentTarget)
+							}}
+							onResize={(event) => {
+								updateCameraAspectRatio(event.currentTarget)
+							}}
 							data-testid="recorder-preview"
 						/>
 					</div>
@@ -575,22 +731,56 @@ export default function RecorderPanel({
 					</div>
 				)}
 
-				<div className="flex flex-wrap items-center gap-3">
-					{isClientReady && (
-						<span className="hidden" data-testid="recorder-mounted">
-							ready
-						</span>
-					)}
-					<button
-						type="button"
-						className={`btn ${isRecording ? "btn-error" : "btn-primary"}`}
-						onClick={isRecording ? stopRecording : startRecording}
-						data-testid="recorder-toggle"
-					>
-						{isRecording ? "Stop Recording" : "Start Recording"}
-					</button>
-					<p className="text-sm text-base-content/60">{status}</p>
-				</div>
+				{kind === "camera" ? (
+					<div className="flex flex-col items-center justify-center gap-3 pt-2">
+						{isClientReady && (
+							<span className="hidden" data-testid="recorder-mounted">
+								ready
+							</span>
+						)}
+						<button
+							type="button"
+							className="group relative flex h-20 w-20 items-center justify-center rounded-full border-4 border-base-content/30 bg-transparent p-1.5 shadow-xl transition-all duration-150 active:scale-90"
+							onClick={isRecording ? stopRecording : startRecording}
+							data-testid="recorder-toggle"
+							aria-label={isRecording ? "Stop Recording" : "Start Recording"}
+						>
+							<span
+								className={`transition-all duration-200 shadow-md ${
+									isRecording
+										? "h-7 w-7 rounded-md bg-error animate-pulse"
+										: "h-full w-full rounded-full bg-error group-hover:scale-95"
+								}`}
+							/>
+							<span className="sr-only">
+								{isRecording ? "Stop Recording" : "Start Recording"}
+							</span>
+						</button>
+						<div className="flex items-center gap-2">
+							<span className="text-xs font-semibold text-base-content/80">
+								{isRecording ? `REC ${minutes}:${seconds}` : "Start Recording"}
+							</span>
+							<span className="text-xs text-base-content/50">• {status}</span>
+						</div>
+					</div>
+				) : (
+					<div className="flex flex-wrap items-center gap-3">
+						{isClientReady && (
+							<span className="hidden" data-testid="recorder-mounted">
+								ready
+							</span>
+						)}
+						<button
+							type="button"
+							className={`btn ${isRecording ? "btn-error" : "btn-primary"}`}
+							onClick={isRecording ? stopRecording : startRecording}
+							data-testid="recorder-toggle"
+						>
+							{isRecording ? "Stop Recording" : "Start Recording"}
+						</button>
+						<p className="text-sm text-base-content/60">{status}</p>
+					</div>
+				)}
 			</div>
 		</div>
 	)

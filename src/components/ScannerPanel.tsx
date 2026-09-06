@@ -1,6 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from "react"
-import { imagesToPdf } from "../lib/pdf-processor"
+import {
+	type CameraDevice,
+	type CameraFacingMode,
+	enumerateVideoDevices,
+	requestCameraStream,
+} from "../lib/camera"
 import type { ProcessedFile } from "../lib/image-processor"
+import { imagesToPdf } from "../lib/pdf-processor"
 import Icon from "./Icon"
 import ScannerCropEditor from "./ScannerCropEditor"
 
@@ -39,9 +45,45 @@ export default function ScannerPanel({
 	const streamRef = useRef<MediaStream | null>(null)
 	const [pages, setPages] = useState<File[]>([])
 	const [cameraActive, setCameraActive] = useState(false)
+	const [cameraAspectRatio, setCameraAspectRatio] = useState<string | null>(
+		null,
+	)
 	const [previewReady, setPreviewReady] = useState(false)
 	const [creating, setCreating] = useState(false)
 	const [cropPageIndex, setCropPageIndex] = useState<number | null>(null)
+	const [videoDevices, setVideoDevices] = useState<CameraDevice[]>([])
+	const [facingMode, setFacingMode] = useState<CameraFacingMode>("environment")
+	const [selectedDeviceId, setSelectedDeviceId] = useState("")
+
+	const refreshDevices = useCallback(async () => {
+		const devices = await enumerateVideoDevices()
+		setVideoDevices(devices)
+		return devices
+	}, [])
+
+	useEffect(() => {
+		void refreshDevices()
+		if (
+			typeof navigator === "undefined" ||
+			!navigator.mediaDevices?.addEventListener
+		) {
+			return
+		}
+		const handleDeviceChange = () => void refreshDevices()
+		navigator.mediaDevices.addEventListener("devicechange", handleDeviceChange)
+		return () => {
+			navigator.mediaDevices.removeEventListener(
+				"devicechange",
+				handleDeviceChange,
+			)
+		}
+	}, [refreshDevices])
+
+	const updateCameraAspectRatio = useCallback((video: HTMLVideoElement) => {
+		if (video.videoWidth && video.videoHeight) {
+			setCameraAspectRatio(`${video.videoWidth} / ${video.videoHeight}`)
+		}
+	}, [])
 
 	const stopCamera = useCallback(() => {
 		streamRef.current?.getTracks().forEach((track) => {
@@ -51,6 +93,7 @@ export default function ScannerPanel({
 		if (videoRef.current) videoRef.current.srcObject = null
 		setCameraActive(false)
 		setPreviewReady(false)
+		setCameraAspectRatio(null)
 	}, [])
 
 	useEffect(() => stopCamera, [stopCamera])
@@ -63,9 +106,15 @@ export default function ScannerPanel({
 		video.playsInline = true
 		video.srcObject = streamRef.current
 		void video.play().catch(() => undefined)
-	}, [cameraActive])
+		if (video.videoWidth && video.videoHeight) {
+			updateCameraAspectRatio(video)
+		}
+	}, [cameraActive, updateCameraAspectRatio])
 
-	const startCamera = async () => {
+	const startCamera = async (
+		targetDeviceId = selectedDeviceId,
+		targetFacing = facingMode,
+	) => {
 		onErrorChange(null)
 		if (!navigator.mediaDevices?.getUserMedia) {
 			onErrorChange("Camera capture is not available in this browser.")
@@ -73,19 +122,67 @@ export default function ScannerPanel({
 		}
 		try {
 			stopCamera()
-			const stream = await navigator.mediaDevices.getUserMedia({
-				video: { facingMode: { ideal: "environment" } },
-				audio: false,
-			})
+			const stream = await requestCameraStream(
+				targetDeviceId || null,
+				targetFacing,
+				false,
+			)
 			streamRef.current = stream
+			const track = stream.getVideoTracks?.()?.[0]
+			const settings = track?.getSettings?.()
+			if (settings?.width && settings?.height) {
+				setCameraAspectRatio(`${settings.width} / ${settings.height}`)
+			}
+			if (
+				settings?.facingMode === "user" ||
+				settings?.facingMode === "environment"
+			) {
+				setFacingMode(settings.facingMode)
+			}
+			if (settings?.deviceId) {
+				setSelectedDeviceId(settings.deviceId)
+			}
 			setPreviewReady(false)
 			setCameraActive(true)
+			void refreshDevices()
 		} catch (error) {
 			onErrorChange(
 				error instanceof Error
 					? `Could not start camera: ${error.message}`
 					: "Could not start camera.",
 			)
+		}
+	}
+
+	const flipCamera = async () => {
+		const nextFacing: CameraFacingMode =
+			facingMode === "environment" ? "user" : "environment"
+		setFacingMode(nextFacing)
+
+		const matching = videoDevices.find((d) => d.facingMode === nextFacing)
+		const nextDeviceId = matching ? matching.deviceId : ""
+		setSelectedDeviceId(nextDeviceId)
+
+		if (cameraActive) {
+			await startCamera(nextDeviceId, nextFacing)
+		}
+	}
+
+	const handleCameraSelect = async (value: string) => {
+		if (value === "user" || value === "environment") {
+			setFacingMode(value)
+			setSelectedDeviceId("")
+			if (cameraActive) {
+				await startCamera("", value)
+			}
+		} else {
+			const dev = videoDevices.find((d) => d.deviceId === value)
+			setSelectedDeviceId(value)
+			const nextFacing = dev?.facingMode || facingMode
+			if (dev?.facingMode) setFacingMode(dev.facingMode)
+			if (cameraActive) {
+				await startCamera(value, nextFacing)
+			}
 		}
 	}
 
@@ -188,64 +285,193 @@ export default function ScannerPanel({
 			data-testid="scanner-mounted"
 		>
 			<div className="card-body gap-4 p-5">
-				<div className="flex flex-wrap items-center gap-2">
-					<button
-						type="button"
-						className="btn btn-primary btn-sm"
-						onClick={startCamera}
-					>
-						Start camera
-					</button>
-					{cameraActive && (
-						<>
+				<input
+					ref={fileInputRef}
+					data-testid="scanner-image-input"
+					type="file"
+					accept="image/*"
+					multiple
+					className="hidden"
+					onChange={(event) => {
+						appendFiles(Array.from(event.target.files ?? []))
+						event.target.value = ""
+					}}
+				/>
+
+				{!cameraActive ? (
+					<div className="flex flex-wrap items-center justify-between gap-3">
+						<div className="flex flex-wrap items-center gap-2">
 							<button
 								type="button"
-								className="btn btn-outline btn-sm"
-								onClick={capturePage}
-								disabled={!previewReady}
+								className="btn btn-primary btn-sm rounded-full gap-2 px-4 shadow-sm"
+								onClick={() => startCamera()}
 							>
-								Capture page
+								<Icon name="camera" size={16} />
+								<span>Start camera</span>
 							</button>
 							<button
 								type="button"
-								className="btn btn-ghost btn-sm"
-								onClick={stopCamera}
+								className="btn btn-outline btn-sm rounded-full gap-2 px-4"
+								onClick={() => fileInputRef.current?.click()}
 							>
-								Stop camera
+								<Icon name="photo-plus" size={16} />
+								<span>Add images</span>
 							</button>
-						</>
-					)}
-					<button
-						type="button"
-						className="btn btn-outline btn-sm"
-						onClick={() => fileInputRef.current?.click()}
-					>
-						Add images
-					</button>
-					<input
-						ref={fileInputRef}
-						data-testid="scanner-image-input"
-						type="file"
-						accept="image/*"
-						multiple
-						className="hidden"
-						onChange={(event) => {
-							appendFiles(Array.from(event.target.files ?? []))
-							event.target.value = ""
-						}}
-					/>
-				</div>
-				{cameraActive && (
-					<div className="overflow-hidden rounded-2xl border border-base-content/10 bg-neutral">
-						<video
-							ref={videoRef}
-							autoPlay
-							muted
-							playsInline
-							className="aspect-video w-full"
-							onLoadedMetadata={() => setPreviewReady(true)}
-							data-testid="scanner-preview"
-						/>
+						</div>
+
+						{/* Camera selector before starting camera */}
+						<div className="flex items-center gap-1.5 text-xs text-base-content/70">
+							<Icon name="camera" size={14} className="opacity-60" />
+							<select
+								aria-label="Select camera"
+								data-testid="scanner-camera-select"
+								className="select select-bordered select-xs rounded-full font-medium"
+								value={selectedDeviceId || facingMode}
+								onChange={(e) => handleCameraSelect(e.target.value)}
+							>
+								<option value="environment">Back Camera (Document)</option>
+								<option value="user">Front Camera</option>
+								{videoDevices.map((device, idx) => (
+									<option key={device.deviceId || idx} value={device.deviceId}>
+										{device.label}
+									</option>
+								))}
+							</select>
+						</div>
+					</div>
+				) : (
+					<div className="flex flex-col gap-3">
+						{/* Viewfinder container */}
+						<div className="relative overflow-hidden rounded-2xl border border-base-content/10 bg-neutral shadow-lg">
+							{/* Top Bar inside Viewfinder */}
+							<div className="absolute top-3 inset-x-3 z-10 flex items-center justify-between pointer-events-auto">
+								<div className="flex items-center gap-1.5 rounded-full bg-black/60 backdrop-blur-md px-3 py-1 text-white border border-white/10 shadow-sm">
+									<Icon name="camera" size={14} className="text-white/80" />
+									<select
+										aria-label="Select camera"
+										data-testid="scanner-camera-select-active"
+										className="bg-transparent text-xs font-semibold text-white focus:outline-none cursor-pointer pr-1"
+										value={selectedDeviceId || facingMode}
+										onChange={(e) => handleCameraSelect(e.target.value)}
+									>
+										<option
+											value="environment"
+											className="bg-neutral text-neutral-content"
+										>
+											Back Camera
+										</option>
+										<option
+											value="user"
+											className="bg-neutral text-neutral-content"
+										>
+											Front Camera
+										</option>
+										{videoDevices.map((device, idx) => (
+											<option
+												key={device.deviceId || idx}
+												value={device.deviceId}
+												className="bg-neutral text-neutral-content"
+											>
+												{device.label}
+											</option>
+										))}
+									</select>
+								</div>
+
+								<button
+									type="button"
+									className="btn btn-circle btn-xs bg-black/60 hover:bg-black/80 backdrop-blur-md border border-white/10 text-white shadow-sm"
+									onClick={stopCamera}
+									aria-label="Close camera"
+									title="Close camera"
+								>
+									<Icon name="close" size={14} />
+								</button>
+							</div>
+
+							<video
+								ref={videoRef}
+								autoPlay
+								muted
+								playsInline
+								className="block h-auto w-full"
+								style={
+									cameraAspectRatio
+										? { aspectRatio: `${cameraAspectRatio}` }
+										: undefined
+								}
+								onLoadedMetadata={(event) => {
+									updateCameraAspectRatio(event.currentTarget)
+									setPreviewReady(true)
+								}}
+								onLoadedData={(event) => {
+									updateCameraAspectRatio(event.currentTarget)
+								}}
+								onResize={(event) => {
+									updateCameraAspectRatio(event.currentTarget)
+								}}
+								data-testid="scanner-preview"
+							/>
+						</div>
+
+						{/* Bottom Camera Action Dock */}
+						<div className="flex items-center justify-between rounded-3xl bg-neutral/95 backdrop-blur-md px-6 py-3 border border-white/10 text-neutral-content shadow-xl">
+							{/* Left: Gallery / Add Images circular button */}
+							<div className="flex flex-col items-center gap-1">
+								<button
+									type="button"
+									className="relative flex h-12 w-12 items-center justify-center rounded-full border border-white/20 bg-white/10 text-white transition-all hover:bg-white/20 active:scale-90"
+									onClick={() => fileInputRef.current?.click()}
+									aria-label="Add images"
+									title="Add images from files"
+								>
+									<Icon name="photo-plus" size={22} />
+									{pages.length > 0 && (
+										<span className="absolute -top-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full bg-primary text-[10px] font-bold text-primary-content shadow-sm">
+											{pages.length}
+										</span>
+									)}
+								</button>
+								<span className="text-[10px] font-medium text-white/70">
+									Gallery
+								</span>
+							</div>
+
+							{/* Center: Real Circular Camera Shutter Button */}
+							<div className="flex flex-col items-center gap-1">
+								<button
+									type="button"
+									className="group relative flex h-18 w-18 items-center justify-center rounded-full border-4 border-white/90 bg-transparent p-1 shadow-2xl transition-all duration-150 active:scale-90 disabled:opacity-40"
+									onClick={capturePage}
+									disabled={!previewReady}
+									aria-label="Capture page"
+									title="Capture page"
+									data-testid="scanner-capture-page"
+								>
+									<span className="h-full w-full rounded-full bg-white transition-all duration-150 group-hover:scale-95 group-active:scale-85 shadow-inner" />
+								</button>
+								<span className="text-[10px] font-medium text-white/70">
+									Capture
+								</span>
+							</div>
+
+							{/* Right: Flip Camera Button */}
+							<div className="flex flex-col items-center gap-1">
+								<button
+									type="button"
+									className="flex h-12 w-12 items-center justify-center rounded-full border border-white/20 bg-white/10 text-white transition-all hover:bg-white/20 active:scale-90"
+									onClick={flipCamera}
+									aria-label="Switch camera"
+									title="Switch camera (flip front/back)"
+									data-testid="scanner-flip-camera"
+								>
+									<Icon name="camera-rotate" size={22} />
+								</button>
+								<span className="text-[10px] font-medium text-white/70">
+									Flip
+								</span>
+							</div>
+						</div>
 					</div>
 				)}
 				{pages.length > 0 && (
