@@ -96,11 +96,109 @@ export default function RecorderPanel({
 	const overlayAnimationFrameRef = useRef<number | null>(null)
 	const pendingOverlayRectRef = useRef<OverlayRect | null>(null)
 
+	const selectedDeviceIdRef = useRef(selectedDeviceId)
+	const facingModeRef = useRef(facingMode)
+	const includeMicrophoneRef = useRef(includeMicrophone)
+
+	useEffect(() => {
+		selectedDeviceIdRef.current = selectedDeviceId
+	}, [selectedDeviceId])
+
+	useEffect(() => {
+		facingModeRef.current = facingMode
+	}, [facingMode])
+
+	useEffect(() => {
+		includeMicrophoneRef.current = includeMicrophone
+	}, [includeMicrophone])
+
 	const updateCameraAspectRatio = useCallback((video: HTMLVideoElement) => {
 		if (video.videoWidth && video.videoHeight) {
 			setCameraAspectRatio(`${video.videoWidth} / ${video.videoHeight}`)
 		}
 	}, [])
+
+	const cameraRecordCanvasRef = useRef<HTMLCanvasElement | null>(null)
+	const cameraRecordRafRef = useRef<number | null>(null)
+	const micStreamRef = useRef<MediaStream | null>(null)
+	const previewPromiseRef = useRef<Promise<MediaStream | null> | null>(null)
+
+	const startCameraPreview = useCallback(
+		async (targetDeviceId?: string, targetFacing?: CameraFacingMode) => {
+			if (
+				typeof navigator === "undefined" ||
+				!navigator.mediaDevices?.getUserMedia ||
+				window.__KITSY_RECORDER_E2E__
+			) {
+				return null
+			}
+			const deviceId = targetDeviceId ?? selectedDeviceIdRef.current
+			const facing = targetFacing ?? facingModeRef.current
+			const promise = (async () => {
+				try {
+					const stream = await requestCameraStream(
+						deviceId || null,
+						facing,
+						includeMicrophoneRef.current,
+					)
+					cameraStreamRef.current = stream
+					const track = stream.getVideoTracks?.()?.[0]
+					const settings = track?.getSettings?.()
+					if (settings?.width && settings?.height) {
+						setCameraAspectRatio(`${settings.width} / ${settings.height}`)
+					}
+					if (
+						settings?.facingMode === "user" ||
+						settings?.facingMode === "environment"
+					) {
+						setFacingMode(settings.facingMode)
+						facingModeRef.current = settings.facingMode
+					}
+					if (settings?.deviceId) {
+						setSelectedDeviceId(settings.deviceId)
+						selectedDeviceIdRef.current = settings.deviceId
+					}
+					if (previewVideoRef.current) {
+						previewVideoRef.current.srcObject = stream
+						previewVideoRef.current.muted = true
+						previewVideoRef.current.playsInline = true
+						void previewVideoRef.current.play().catch(() => undefined)
+						if (
+							previewVideoRef.current.videoWidth &&
+							previewVideoRef.current.videoHeight
+						) {
+							updateCameraAspectRatio(previewVideoRef.current)
+						}
+					}
+					void refreshDevices()
+					return stream
+				} catch (error) {
+					onErrorChange(
+						error instanceof Error
+							? `Camera access needed: ${error.message}`
+							: "Could not access camera.",
+					)
+					return null
+				}
+			})()
+			previewPromiseRef.current = promise
+			return promise
+		},
+		[onErrorChange, refreshDevices, updateCameraAspectRatio],
+	)
+
+	useEffect(() => {
+		if (kind === "camera") {
+			void startCameraPreview()
+		} else {
+			stopStream(cameraStreamRef.current)
+			cameraStreamRef.current = null
+			if (previewVideoRef.current) {
+				previewVideoRef.current.srcObject = null
+			}
+			setCameraAspectRatio(null)
+		}
+	}, [kind, startCameraPreview])
 
 	const switchCamera = async (
 		targetDeviceId: string,
@@ -108,12 +206,6 @@ export default function RecorderPanel({
 	) => {
 		setSelectedDeviceId(targetDeviceId)
 		setFacingMode(targetFacing)
-
-		const isCameraActive =
-			isRecording || Boolean(previewVideoRef.current?.srcObject)
-		if (!isCameraActive) {
-			return
-		}
 
 		try {
 			const newStream = await requestCameraStream(
@@ -129,16 +221,28 @@ export default function RecorderPanel({
 
 			if (kind === "camera") {
 				const oldCameraStream = cameraStreamRef.current
-				cameraStreamRef.current = newStream
+				const preservedAudioTracks = oldCameraStream?.getAudioTracks?.() ?? []
+				cameraStreamRef.current = new MediaStream([
+					...newStream.getVideoTracks(),
+					...preservedAudioTracks,
+				])
 
 				if (previewVideoRef.current) {
 					previewVideoRef.current.srcObject = newStream
+					previewVideoRef.current.muted = true
+					previewVideoRef.current.playsInline = true
 					void previewVideoRef.current.play().catch(() => undefined)
+					if (
+						previewVideoRef.current.videoWidth &&
+						previewVideoRef.current.videoHeight
+					) {
+						updateCameraAspectRatio(previewVideoRef.current)
+					}
 				}
 
-				if (activeStreamRef.current && newVideoTrack) {
+				if (activeStreamRef.current && cameraRecordRafRef.current === null) {
 					const oldTrack = activeStreamRef.current.getVideoTracks?.()?.[0]
-					if (oldTrack && oldTrack !== newVideoTrack) {
+					if (oldTrack && newVideoTrack && oldTrack !== newVideoTrack) {
 						if (typeof activeStreamRef.current.addTrack === "function") {
 							activeStreamRef.current.addTrack(newVideoTrack)
 						}
@@ -258,6 +362,7 @@ export default function RecorderPanel({
 
 	useEffect(() => {
 		if (typeof document === "undefined") return
+		cameraRecordCanvasRef.current = document.createElement("canvas")
 		hiddenScreenVideoRef.current = document.createElement("video")
 		hiddenCameraVideoRef.current = document.createElement("video")
 	}, [])
@@ -267,10 +372,14 @@ export default function RecorderPanel({
 			if (animationFrameRef.current !== null) {
 				window.cancelAnimationFrame(animationFrameRef.current)
 			}
+			if (cameraRecordRafRef.current !== null) {
+				window.cancelAnimationFrame(cameraRecordRafRef.current)
+			}
 			if (overlayAnimationFrameRef.current !== null) {
 				window.cancelAnimationFrame(overlayAnimationFrameRef.current)
 			}
 			recorderRef.current?.state === "recording" && recorderRef.current.stop()
+			stopStream(micStreamRef.current)
 			stopStream(activeStreamRef.current)
 			stopStream(displayStreamRef.current)
 			stopStream(cameraStreamRef.current)
@@ -379,8 +488,14 @@ export default function RecorderPanel({
 			window.cancelAnimationFrame(animationFrameRef.current)
 			animationFrameRef.current = null
 		}
+		if (cameraRecordRafRef.current !== null) {
+			window.cancelAnimationFrame(cameraRecordRafRef.current)
+			cameraRecordRafRef.current = null
+		}
 		audioContextRef.current?.close().catch(() => undefined)
 		audioContextRef.current = null
+		stopStream(micStreamRef.current)
+		micStreamRef.current = null
 		stopStream(activeStreamRef.current)
 		stopStream(displayStreamRef.current)
 		stopStream(cameraStreamRef.current)
@@ -434,31 +549,85 @@ export default function RecorderPanel({
 					video: false,
 				})
 			} else if (kind === "camera") {
-				recordingStream = await requestCameraStream(
-					selectedDeviceId || null,
-					facingMode,
-					includeMicrophone,
-				)
-				cameraStream = recordingStream
-				const track = recordingStream.getVideoTracks?.()?.[0]
-				const settings = track?.getSettings?.()
-				if (settings?.width && settings?.height) {
-					setCameraAspectRatio(`${settings.width} / ${settings.height}`)
+				let initialCamera = cameraStreamRef.current
+				if (!initialCamera && previewPromiseRef.current) {
+					initialCamera = await previewPromiseRef.current
 				}
 				if (
-					settings?.facingMode === "user" ||
-					settings?.facingMode === "environment"
+					!initialCamera ||
+					initialCamera.getVideoTracks().every((t) => t.readyState === "ended")
 				) {
-					setFacingMode(settings.facingMode)
+					initialCamera = await requestCameraStream(
+						selectedDeviceId || null,
+						facingMode,
+						includeMicrophone,
+					)
+					cameraStreamRef.current = initialCamera
+					const track = initialCamera.getVideoTracks?.()?.[0]
+					const settings = track?.getSettings?.()
+					if (settings?.width && settings?.height) {
+						setCameraAspectRatio(`${settings.width} / ${settings.height}`)
+					}
+					if (
+						settings?.facingMode === "user" ||
+						settings?.facingMode === "environment"
+					) {
+						setFacingMode(settings.facingMode)
+					}
+					if (settings?.deviceId) {
+						setSelectedDeviceId(settings.deviceId)
+					}
+					if (previewVideoRef.current) {
+						previewVideoRef.current.srcObject = initialCamera
+						previewVideoRef.current.muted = true
+						previewVideoRef.current.playsInline = true
+						await waitForPlayback(previewVideoRef.current)
+					}
+					void refreshDevices()
 				}
-				if (settings?.deviceId) {
-					setSelectedDeviceId(settings.deviceId)
+				cameraStream = initialCamera
+
+				const audioTracks = includeMicrophone
+					? (cameraStream?.getAudioTracks() ?? [])
+					: []
+
+				const canvas =
+					cameraRecordCanvasRef.current || document.createElement("canvas")
+				cameraRecordCanvasRef.current = canvas
+				const video = previewVideoRef.current
+				let videoStreamToRecord: MediaStream = cameraStream
+
+				if (video && typeof canvas.captureStream === "function") {
+					const context = canvas.getContext("2d")
+					if (context) {
+						canvas.width = video.videoWidth || 1280
+						canvas.height = video.videoHeight || 720
+
+						const drawCamera = () => {
+							if (video && (video.readyState >= 2 || video.videoWidth > 0)) {
+								if (
+									video.videoWidth &&
+									video.videoHeight &&
+									(canvas.width !== video.videoWidth ||
+										canvas.height !== video.videoHeight)
+								) {
+									canvas.width = video.videoWidth
+									canvas.height = video.videoHeight
+								}
+								context.drawImage(video, 0, 0, canvas.width, canvas.height)
+							}
+							cameraRecordRafRef.current =
+								window.requestAnimationFrame(drawCamera)
+						}
+						drawCamera()
+						videoStreamToRecord = canvas.captureStream(30)
+					}
 				}
-				if (previewVideoRef.current) {
-					previewVideoRef.current.srcObject = recordingStream
-					await waitForPlayback(previewVideoRef.current)
-				}
-				void refreshDevices()
+
+				recordingStream = new MediaStream([
+					...videoStreamToRecord.getVideoTracks(),
+					...audioTracks,
+				])
 			} else {
 				displayStream = await navigator.mediaDevices.getDisplayMedia({
 					video: {
@@ -529,7 +698,15 @@ export default function RecorderPanel({
 				setStatus("Recording finished. Review or download the result below.")
 				setElapsedMs(0)
 				startTimestampRef.current = null
-				cleanupStreams()
+				if (cameraRecordRafRef.current !== null) {
+					window.cancelAnimationFrame(cameraRecordRafRef.current)
+					cameraRecordRafRef.current = null
+				}
+				stopStream(micStreamRef.current)
+				micStreamRef.current = null
+				if (kind !== "camera") {
+					cleanupStreams()
+				}
 			}
 
 			recorder.start(250)
@@ -540,9 +717,10 @@ export default function RecorderPanel({
 		} catch (error) {
 			cleanupStreams()
 			onErrorChange(
-				error instanceof Error ? error.message : "Failed to start recording.",
+				error instanceof Error
+					? `Could not start recording: ${error.message}`
+					: "Could not start recording.",
 			)
-			setStatus("Recording did not start.")
 		}
 	}
 
