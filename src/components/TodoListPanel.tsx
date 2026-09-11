@@ -12,6 +12,7 @@ import {
 	createTodoItem,
 	getVisibleTodoItems,
 	isTodoReminderToday,
+	matchesTodoDateRange,
 	matchesTodoQuery,
 	mergeTodoItems,
 	parseTodoItems,
@@ -476,6 +477,8 @@ export default function TodoListPanel() {
 	const [items, setItems] = useState<TodoItem[]>([])
 	const [filter, setFilter] = useState<FilterMode>("open")
 	const [search, setSearch] = useState("")
+	const [afterDate, setAfterDate] = useState("")
+	const [beforeDate, setBeforeDate] = useState("")
 	const [status, setStatus] = useState<string | null>(null)
 	const [syncStatus, setSyncStatus] = useState<string | null>(null)
 	const [hasLoaded, setHasLoaded] = useState(false)
@@ -584,8 +587,10 @@ export default function TodoListPanel() {
 			.filter((item) => item.draft && !item.deletedAt)
 			.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))[0] ??
 		emptyDraftRef.current
-	const filteredItems = visibleItems.filter((item) =>
-		matchesTodoQuery(item, deferredSearch),
+	const filteredItems = visibleItems.filter(
+		(item) =>
+			matchesTodoQuery(item, deferredSearch) &&
+			matchesTodoDateRange(item, afterDate, beforeDate),
 	)
 
 	const openItems = filteredItems.filter((item) => !item.completed)
@@ -758,20 +763,6 @@ export default function TodoListPanel() {
 					onBlur={commitDraft}
 					onReminderChange={(value) => setDraftState(draftItem.text, value)}
 				/>
-				<div className="flex flex-col gap-3 sm:flex-row">
-					<label className="input input-bordered flex items-center gap-2 flex-1">
-						<Icon name="search" size={16} className="opacity-50" />
-						<input
-							type="text"
-							className="grow"
-							placeholder="Search todos"
-							value={search}
-							onChange={(event) => setSearch(event.target.value)}
-							data-testid="todo-input"
-						/>
-					</label>
-				</div>
-
 				<div className="flex flex-wrap gap-2">
 					{(["open", "done", "all"] as const).map((value) => (
 						<button
@@ -851,6 +842,62 @@ export default function TodoListPanel() {
 						<span>{cloud.error ?? syncStatus}</span>
 					</div>
 				)}
+
+				<div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+					<label className="input input-bordered flex items-center gap-2 flex-1">
+						<Icon name="search" size={16} className="opacity-50" />
+						<input
+							type="text"
+							className="grow"
+							placeholder="Search todos"
+							value={search}
+							onChange={(event) => setSearch(event.target.value)}
+							data-testid="todo-input"
+						/>
+					</label>
+
+					<div className="flex items-center gap-2">
+						<label className="input input-bordered flex items-center gap-2 text-xs">
+							<span className="font-medium text-base-content/60">After:</span>
+							<input
+								type="date"
+								className="w-28 bg-transparent text-xs focus:outline-none"
+								value={afterDate}
+								onChange={(event) => setAfterDate(event.target.value)}
+								aria-label="Filter after date"
+								data-testid="todo-filter-after"
+							/>
+						</label>
+
+						<label className="input input-bordered flex items-center gap-2 text-xs">
+							<span className="font-medium text-base-content/60">Before:</span>
+							<input
+								type="date"
+								className="w-28 bg-transparent text-xs focus:outline-none"
+								value={beforeDate}
+								onChange={(event) => setBeforeDate(event.target.value)}
+								aria-label="Filter before date"
+								data-testid="todo-filter-before"
+							/>
+						</label>
+
+						{(afterDate || beforeDate) && (
+							<button
+								type="button"
+								className="btn btn-ghost btn-sm btn-circle"
+								onClick={() => {
+									setAfterDate("")
+									setBeforeDate("")
+								}}
+								aria-label="Clear date filters"
+								data-testid="todo-filter-clear-dates"
+								title="Clear date filters"
+							>
+								<Icon name="close" size={16} />
+							</button>
+						)}
+					</div>
+				</div>
 
 				<div className="space-y-4" data-testid="todo-list-panel">
 					{filter === "all" ? (

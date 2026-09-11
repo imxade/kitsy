@@ -265,6 +265,21 @@ export function matchesTodoQuery(item: TodoItem, query: string) {
 	})
 }
 
+export function matchesTodoDateRange(
+	item: TodoItem,
+	after?: string | null,
+	before?: string | null,
+) {
+	const validAfter = normalizeReminderDate(after)
+	const validBefore = normalizeReminderDate(before)
+
+	if (!validAfter && !validBefore) return true
+	if (!item.reminderDate) return false
+	if (validAfter && item.reminderDate < validAfter) return false
+	if (validBefore && item.reminderDate > validBefore) return false
+	return true
+}
+
 export function splitTodoText(text: string): TodoTextSegment[] {
 	const segments: TodoTextSegment[] = []
 	let cursor = 0

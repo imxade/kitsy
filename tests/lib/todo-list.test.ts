@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest"
 import {
+	matchesTodoDateRange,
 	mergeTodoItems,
 	parseTodoItems,
 	serializeTodoItems,
@@ -98,5 +99,78 @@ describe("todo list helpers", () => {
 			{ text: "," },
 			{ text: " then report back." },
 		])
+	})
+
+	describe("matchesTodoDateRange", () => {
+		const makeItem = (reminderDate: string | null): TodoItem => ({
+			id: "test",
+			text: "Task",
+			completed: false,
+			createdAt: "2026-05-01T00:00:00.000Z",
+			updatedAt: "2026-05-01T00:00:00.000Z",
+			reminderDate,
+			deletedAt: null,
+			draft: false,
+			pinned: false,
+		})
+
+		it("matches any item when neither bound is set", () => {
+			expect(matchesTodoDateRange(makeItem("2026-05-05"), null, null)).toBe(
+				true,
+			)
+			expect(matchesTodoDateRange(makeItem(null), null, null)).toBe(true)
+			expect(matchesTodoDateRange(makeItem("2026-05-05"), "", "")).toBe(true)
+			expect(matchesTodoDateRange(makeItem(null), "", "")).toBe(true)
+		})
+
+		it("filters between range when both bounds are set", () => {
+			const after = "2026-05-01"
+			const before = "2026-05-10"
+
+			expect(matchesTodoDateRange(makeItem("2026-05-01"), after, before)).toBe(
+				true,
+			)
+			expect(matchesTodoDateRange(makeItem("2026-05-05"), after, before)).toBe(
+				true,
+			)
+			expect(matchesTodoDateRange(makeItem("2026-05-10"), after, before)).toBe(
+				true,
+			)
+			expect(matchesTodoDateRange(makeItem("2026-04-30"), after, before)).toBe(
+				false,
+			)
+			expect(matchesTodoDateRange(makeItem("2026-05-11"), after, before)).toBe(
+				false,
+			)
+			expect(matchesTodoDateRange(makeItem(null), after, before)).toBe(false)
+		})
+
+		it("keeps upper end open when only after is set", () => {
+			const after = "2026-05-05"
+
+			expect(matchesTodoDateRange(makeItem("2026-05-05"), after, null)).toBe(
+				true,
+			)
+			expect(matchesTodoDateRange(makeItem("2026-12-31"), after, "")).toBe(true)
+			expect(matchesTodoDateRange(makeItem("2026-05-04"), after, null)).toBe(
+				false,
+			)
+			expect(matchesTodoDateRange(makeItem(null), after, null)).toBe(false)
+		})
+
+		it("keeps lower end open when only before is set", () => {
+			const before = "2026-05-05"
+
+			expect(matchesTodoDateRange(makeItem("2026-05-05"), null, before)).toBe(
+				true,
+			)
+			expect(matchesTodoDateRange(makeItem("2020-01-01"), "", before)).toBe(
+				true,
+			)
+			expect(matchesTodoDateRange(makeItem("2026-05-06"), null, before)).toBe(
+				false,
+			)
+			expect(matchesTodoDateRange(makeItem(null), null, before)).toBe(false)
+		})
 	})
 })

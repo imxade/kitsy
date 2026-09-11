@@ -210,4 +210,97 @@ describe("TodoListPanel", () => {
 
 		expect(screen.queryByTestId("todo-edit-input")).toBeNull()
 	})
+
+	it("filters todos using after and before date filters", async () => {
+		window.localStorage.setItem(
+			TODO_STORAGE_KEY,
+			JSON.stringify([
+				{
+					id: "task-1",
+					text: "Task May 1",
+					completed: false,
+					createdAt: "2026-05-01T00:00:00.000Z",
+					updatedAt: "2026-05-01T00:00:00.000Z",
+					reminderDate: "2026-05-01",
+					deletedAt: null,
+					draft: false,
+					pinned: false,
+				},
+				{
+					id: "task-2",
+					text: "Task May 5",
+					completed: false,
+					createdAt: "2026-05-05T00:00:00.000Z",
+					updatedAt: "2026-05-05T00:00:00.000Z",
+					reminderDate: "2026-05-05",
+					deletedAt: null,
+					draft: false,
+					pinned: false,
+				},
+				{
+					id: "task-3",
+					text: "Task May 15",
+					completed: false,
+					createdAt: "2026-05-15T00:00:00.000Z",
+					updatedAt: "2026-05-15T00:00:00.000Z",
+					reminderDate: "2026-05-15",
+					deletedAt: null,
+					draft: false,
+					pinned: false,
+				},
+				{
+					id: "task-4",
+					text: "Task No Date",
+					completed: false,
+					createdAt: "2026-05-02T00:00:00.000Z",
+					updatedAt: "2026-05-02T00:00:00.000Z",
+					reminderDate: null,
+					deletedAt: null,
+					draft: false,
+					pinned: false,
+				},
+			]),
+		)
+
+		render(<TodoListPanel />)
+
+		// Initially all 4 items should be visible
+		expect(await screen.findByText("Task May 1")).toBeTruthy()
+		expect(screen.getByText("Task May 5")).toBeTruthy()
+		expect(screen.getByText("Task May 15")).toBeTruthy()
+		expect(screen.getByText("Task No Date")).toBeTruthy()
+
+		const afterInput = screen.getByTestId("todo-filter-after")
+		const beforeInput = screen.getByTestId("todo-filter-before")
+
+		// 1. Setting only after keeps upper end open
+		fireEvent.change(afterInput, { target: { value: "2026-05-05" } })
+		expect(screen.queryByText("Task May 1")).toBeNull()
+		expect(screen.getByText("Task May 5")).toBeTruthy()
+		expect(screen.getByText("Task May 15")).toBeTruthy()
+		expect(screen.queryByText("Task No Date")).toBeNull()
+
+		// 2. Setting both creates a range between after and before
+		fireEvent.change(beforeInput, { target: { value: "2026-05-10" } })
+		expect(screen.queryByText("Task May 1")).toBeNull()
+		expect(screen.getByText("Task May 5")).toBeTruthy()
+		expect(screen.queryByText("Task May 15")).toBeNull()
+		expect(screen.queryByText("Task No Date")).toBeNull()
+
+		// 3. Clearing after keeps lower end open (only before is active)
+		fireEvent.change(afterInput, { target: { value: "" } })
+		expect(screen.getByText("Task May 1")).toBeTruthy()
+		expect(screen.getByText("Task May 5")).toBeTruthy()
+		expect(screen.queryByText("Task May 15")).toBeNull()
+		expect(screen.queryByText("Task No Date")).toBeNull()
+
+		// 4. Clicking the clear button clears both dates and shows all items
+		const clearButton = screen.getByTestId("todo-filter-clear-dates")
+		fireEvent.click(clearButton)
+		expect(screen.getByText("Task May 1")).toBeTruthy()
+		expect(screen.getByText("Task May 5")).toBeTruthy()
+		expect(screen.getByText("Task May 15")).toBeTruthy()
+		expect(screen.getByText("Task No Date")).toBeTruthy()
+		expect(screen.queryByTestId("todo-filter-clear-dates")).toBeNull()
+	})
 })
