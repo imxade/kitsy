@@ -30,6 +30,7 @@
     "@tabler/icons-react": "^3.41.1",
     "@tanstack/react-router": "^1.168.7",
     "@tanstack/react-start": "^1.167.12",
+    "@vercel/analytics": "^2.0.1",
     "fflate": "^0.8.2",
     "imagetracerjs": "^1.2.6",
     "konva": "^10.2.3",

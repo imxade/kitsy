@@ -5,6 +5,7 @@ import {
 	useRouter,
 } from "@tanstack/react-router"
 import { useEffect } from "react"
+import { Analytics } from "@vercel/analytics/react"
 import AppShellProvider from "../components/AppShellProvider"
 import Header from "../components/Header"
 import "../styles.css"
@@ -82,6 +83,7 @@ function RootDocument({ children }: { children: React.ReactNode }) {
 					</div>
 				</AppShellProvider>
 				<Scripts />
+				<Analytics />
 			</body>
 		</html>
 	)
